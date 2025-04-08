@@ -15,7 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 CC=gcc
-CFLAGS=-Wall -Wpedantic -Wextra -std=c11 -Iinclude/ -DEXT_TARMAN_BUILD="\"$(shell date +%y.%m.%d)\""
+CFLAGS=-Wall -Wpedantic -Wextra -std=gnu11 -Iinclude/ -DEXT_TARMAN_BUILD="\"$(shell date +%y.%m.%d)\""
 LDFLAGS=
 
 DEBUG_CFLAGS=-O0 -fsanitize=undefined -fsanitize=address -g

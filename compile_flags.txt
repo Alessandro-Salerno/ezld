@@ -1,3 +1,4 @@
 -Iinclude/ 
 -Wall 
 -Wextra 
+-std=gnu11

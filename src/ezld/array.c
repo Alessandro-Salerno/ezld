@@ -15,12 +15,16 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <ezld/array.h>
-#include <stdio.h>
+#include <stdlib.h>
 
-int main(void) {
-    ezld_array(int) arr = ezld_array_new();
-    int *x              = ezld_array_push(arr);
-    *x                  = 1;
-    printf("%i = %i\n", *x, arr.buf[0]);
-    ezld_array_free(arr);
+size_t ezld_array_grow(void **buf, size_t *len, size_t *cap, size_t elemsz) {
+    if (0 == *cap) {
+        *cap = 8;
+        *buf = malloc(elemsz * *cap);
+    } else if (*len == *cap) {
+        *cap *= 2;
+        *buf = realloc(*buf, elemsz * *cap);
+    }
+    (*len)++;
+    return (*len) - 1;
 }
