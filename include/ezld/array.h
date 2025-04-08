@@ -14,6 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+#pragma once
+
 #include <stddef.h>
 #include <stdlib.h>
 
@@ -31,6 +33,7 @@
     (ezld_array_grow(                                                        \
          (void **)&(arr).buf, &(arr).len, &(arr).cap, sizeof((arr)._dummy)), \
      &((arr).buf[(arr).len - 1]))
-#define ezld_array_free(arr) free((arr).buf)
+#define ezld_array_free(arr)      free((arr).buf), (arr).buf = NULL
+#define ezld_container_push(cont) ezld_array_push((cont).arr)
 
 size_t ezld_array_grow(void **buf, size_t *len, size_t *cap, size_t elemsz);

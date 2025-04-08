@@ -14,13 +14,42 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#include <ezld/array.h>
+#include <ezld/linker.h>
+#include <ezld/runtime.h>
 #include <stdio.h>
 
-int main(void) {
-    ezld_array(int) arr = ezld_array_new();
-    int *x              = ezld_array_push(arr);
-    *x                  = 1;
-    printf("%i = %i\n", *x, arr.buf[0]);
-    ezld_array_free(arr);
+int main(int argc, const char *argv[]) {
+    ezld_runtime_init(argc, argv);
+    ezld_instance_t instance = {.merged_sections = ezld_array_new(),
+                                .object_files    = ezld_array_new()};
+
+    if (1 == argc) {
+        ezld_runtime_exit(EZLD_ECODE_NOPARAM,
+                          "insufficient commandline arguments: need to specify "
+                          "files to link");
+    }
+
+    for (int i = 1; i < argc; i++) {
+        FILE *file = fopen(argv[i], "rb");
+
+        if (NULL == file) {
+            ezld_runtime_exit(
+                EZLD_ECODE_NOFILE, "could not open input file '%s'", argv[i]);
+        }
+
+        ezld_obj_t *obj = ezld_array_push(instance.object_files);
+        obj->file       = file;
+        obj->path       = argv[i];
+        obj->index      = i - 1;
+        ezld_array_init(obj->sections);
+    }
+
+    FILE *out = fopen("a.out", "wb");
+
+    if (NULL == out) {
+        ezld_runtime_exit(EZLD_ECODE_NOFILE, "could not open output file");
+    }
+
+    ezld_link(&instance, NULL);
+    return EXIT_SUCCESS;
 }
