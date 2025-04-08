@@ -29,11 +29,14 @@
 
 #define ezld_array_new()     {.buf = NULL, .len = 0, .cap = 0}
 #define ezld_array_init(arr) arr.buf = NULL, arr.len = 0, arr.cap = 0
+#define ezld_array_alloc(arr, size) \
+    (arr).cap = (size), (arr).buf = malloc(sizeof((arr)._dummy) * size)
 #define ezld_array_push(arr)                                                 \
     (ezld_array_grow(                                                        \
          (void **)&(arr).buf, &(arr).len, &(arr).cap, sizeof((arr)._dummy)), \
      &((arr).buf[(arr).len - 1]))
-#define ezld_array_free(arr)      free((arr).buf), (arr).buf = NULL
+#define ezld_array_free(arr) \
+    free((arr).buf), (arr).buf = NULL, (arr).len = 0, (arr).cap = 0
 #define ezld_container_push(cont) ezld_array_push((cont).arr)
 
 size_t ezld_array_grow(void **buf, size_t *len, size_t *cap, size_t elemsz);

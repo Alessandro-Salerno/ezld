@@ -16,8 +16,13 @@
 
 #pragma once
 
+#include <stdio.h>
+
 #define EZLD_ECODE_NOPARAM -1
 #define EZLD_ECODE_NOFILE  -2
+#define EZLD_ECODE_BADFILE -3
+#define EZLD_ECODE_NOMEM   -4
+#define EZLD_ECODE_BADSEC  -5
 
 #define EZLD_EMSG_WARN "warning"
 #define EZLD_EMSG_ERR  "error"
@@ -26,4 +31,15 @@
 void ezld_runtime_init(int argc, const char *argv[]);
 void ezld_runtime_message(const char *type, const char *fmt, ...);
 __attribute__((noreturn)) void
-ezld_runtime_exit(int code, const char *msgfmt, ...);
+      ezld_runtime_exit(int code, const char *msgfmt, ...);
+void  ezld_runtime_read_exact(void       *buf,
+                              size_t      size,
+                              const char *filename,
+                              FILE       *file);
+void  ezld_runtime_seek(size_t off, const char *filename, FILE *file);
+void  ezld_runtime_read_exact_at(void       *buf,
+                                 size_t      size,
+                                 size_t      off,
+                                 const char *filename,
+                                 FILE       *file);
+void *ezld_runtime_alloc(size_t elemsz, size_t numelems);

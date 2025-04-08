@@ -14,14 +14,17 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+#include <ezld/array.h>
 #include <ezld/linker.h>
 #include <ezld/runtime.h>
 #include <stdio.h>
+#include <string.h>
 
 int main(int argc, const char *argv[]) {
     ezld_runtime_init(argc, argv);
-    ezld_instance_t instance = {.merged_sections = ezld_array_new(),
-                                .object_files    = ezld_array_new()};
+    ezld_instance_t instance = {.mrg_sec     = ezld_array_new(),
+                                .o_files     = ezld_array_new(),
+                                .glob_symtab = ezld_array_new()};
 
     if (1 == argc) {
         ezld_runtime_exit(EZLD_ECODE_NOPARAM,
@@ -37,11 +40,10 @@ int main(int argc, const char *argv[]) {
                 EZLD_ECODE_NOFILE, "could not open input file '%s'", argv[i]);
         }
 
-        ezld_obj_t *obj = ezld_array_push(instance.object_files);
+        ezld_obj_t *obj = ezld_array_push(instance.o_files);
         obj->file       = file;
         obj->path       = argv[i];
         obj->index      = i - 1;
-        ezld_array_init(obj->sections);
     }
 
     FILE *out = fopen("a.out", "wb");
