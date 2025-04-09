@@ -19,6 +19,7 @@
 #include <musl/elf.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 // This can be global
@@ -74,17 +75,10 @@ static void merge_section(ezld_obj_sec_t *objsec, const char *objsec_name) {
     new_mrg->name                   = objsec_name;
     new_mrg->index                  = next_mrg_idx;
     ezld_array_init(new_mrg->sub);
-    objsec->merged_idx   = 0;
-    objsec->merged_sec   = new_mrg;
-    objsec->transl_off   = 0;
-    ezld_obj_sec_t **new = ezld_array_push(new_mrg->sub);
-    fprintf(stderr,
-            "adding section %p to array %p in position %zu with addr %p\n",
-            objsec,
-            new_mrg->sub.buf,
-            next_mrg_idx,
-            new);
-    *new = objsec;
+    objsec->merged_idx             = 0;
+    objsec->merged_sec             = new_mrg;
+    objsec->transl_off             = 0;
+    *ezld_array_push(new_mrg->sub) = objsec;
 }
 
 static void merge_symtabs(ezld_obj_t *obj) {
@@ -238,16 +232,38 @@ static void read_objects(void) {
     }
 }
 
+static void write_exec(FILE *out) {
+    Elf32_Ehdr ehdr             = {0};
+    ehdr.e_ident[EI_MAG0]       = ELFMAG0;
+    ehdr.e_ident[EI_MAG1]       = ELFMAG1;
+    ehdr.e_ident[EI_MAG2]       = ELFMAG2;
+    ehdr.e_ident[EI_MAG3]       = ELFMAG3;
+    ehdr.e_ident[EI_CLASS]      = ELFCLASS32;
+    ehdr.e_ident[EI_DATA]       = ELFDATA2LSB;
+    ehdr.e_ident[EI_VERSION]    = 1;
+    ehdr.e_ident[EI_OSABI]      = ELFOSABI_SYSV;
+    ehdr.e_ident[EI_ABIVERSION] = 1;
+
+    ehdr.e_type    = ET_EXEC;
+    ehdr.e_machine = EM_RISCV;
+    ehdr.e_version = EV_CURRENT;
+
+    ehdr.e_entry =
+        0; // TODO: handle section virt-addr and compute offset of _start
+    ehdr.e_flags = 0;
+}
+
 void ezld_link(ezld_instance_t *instance, FILE *output_file) {
     g_self = instance;
     read_objects();
 
     for (size_t i = 0; i < g_self->mrg_sec.len; i++) {
         ezld_merged_sec_t *m = &g_self->mrg_sec.buf[i];
-        fprintf(stderr, "merged section: %s\n", m->name);
+        fprintf(
+            stderr, "merged section: %s (%zu entries)\n", m->name, m->sub.len);
 
         for (size_t j = 0; j < m->sub.len; j++) {
-            ezld_obj_sec_t *s = m->sub.buf[i];
+            ezld_obj_sec_t *s = m->sub.buf[j];
             fprintf(stderr, "\t SEC: %p ", s);
             fprintf(stderr,
                     "%s (elems: %zu, transl: %zu)\n",
@@ -262,4 +278,6 @@ void ezld_link(ezld_instance_t *instance, FILE *output_file) {
         fprintf(
             stderr, "SYM: %s = %u\n", s->strtab->o_file->path, s->sym.st_value);
     }
+
+    write_exec(output_file);
 }

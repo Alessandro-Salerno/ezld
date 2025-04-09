@@ -55,3 +55,6 @@ dkms.conf
 *.out
 bin/
 obj/
+
+# macos
+.DS_Store
