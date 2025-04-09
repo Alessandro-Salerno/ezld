@@ -25,6 +25,17 @@
 // This can be global
 static ezld_instance_t *g_self = NULL;
 
+static void read_section_contents(ezld_obj_sec_t *sec) {
+    if (NULL == sec->buf) {
+        sec->buf = ezld_runtime_alloc(1, sec->shdr.sh_size);
+        ezld_runtime_read_exact_at(sec->buf,
+                                   sec->shdr.sh_size,
+                                   sec->shdr.sh_offset,
+                                   sec->o_file->path,
+                                   sec->o_file->file);
+    }
+}
+
 static void merge_section(ezld_obj_sec_t *objsec, const char *objsec_name) {
     for (size_t i = 0; i < g_self->mrg_sec.len; i++) {
         ezld_merged_sec_t *mrg = &g_self->mrg_sec.buf[i];
@@ -185,12 +196,6 @@ static void read_object(ezld_obj_t *obj) {
         ezld_runtime_read_exact(
             &shdr, sizeof(Elf32_Shdr), obj->path, obj->file);
 
-        // Cannot skip these here because indicies may be broken
-        /*if (SHT_PROGBITS != shdr.sh_type && SHT_NOBITS != shdr.sh_type &&
-            SHT_STRTAB != shdr.sh_type && SHT_SYMTAB != shdr.sh_type) {
-            continue;
-        }*/
-
         ezld_obj_sec_t *objsec = ezld_array_push(obj->sections);
         objsec->o_file         = obj;
         objsec->shdr           = shdr;
@@ -219,8 +224,11 @@ static void read_object(ezld_obj_t *obj) {
             continue;
         }
 
-        const char *objsec_name = &shstrtab[shdr.sh_name];
-        merge_section(objsec, objsec_name);
+        if (SHT_PROGBITS == shdr.sh_type || SHT_NOBITS == shdr.sh_type ||
+            SHT_STRTAB == shdr.sh_type || SHT_SYMTAB == shdr.sh_type) {
+            const char *objsec_name = &shstrtab[shdr.sh_name];
+            merge_section(objsec, objsec_name);
+        }
     }
 
     merge_symtabs(obj);

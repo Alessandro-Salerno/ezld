@@ -67,6 +67,7 @@ typedef struct ezld_instance {
     ezld_array(ezld_merged_sec_t) mrg_sec;
     ezld_array(ezld_obj_t) o_files;
     ezld_array(ezld_global_sym_t) glob_symtab;
+    ezld_obj_sym_t *entry_sym;
 } ezld_instance_t;
 
 void ezld_link(ezld_instance_t *instance, FILE *output_file);
