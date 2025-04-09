@@ -60,7 +60,7 @@ static void merge_section(ezld_obj_sec_t *objsec, const char *objsec_name) {
                     objsec_name);
             }
 
-            size_t transl_off          = last->transl_off;
+            size_t transl_off          = last->transl_off + last->shdr.sh_size;
             *ezld_array_push(mrg->sub) = objsec;
             objsec->merged_idx         = next_idx;
             objsec->merged_sec         = mrg;
@@ -74,10 +74,17 @@ static void merge_section(ezld_obj_sec_t *objsec, const char *objsec_name) {
     new_mrg->name                   = objsec_name;
     new_mrg->index                  = next_mrg_idx;
     ezld_array_init(new_mrg->sub);
-    objsec->merged_idx             = 0;
-    objsec->merged_sec             = new_mrg;
-    objsec->transl_off             = 0;
-    *ezld_array_push(new_mrg->sub) = objsec;
+    objsec->merged_idx   = 0;
+    objsec->merged_sec   = new_mrg;
+    objsec->transl_off   = 0;
+    ezld_obj_sec_t **new = ezld_array_push(new_mrg->sub);
+    fprintf(stderr,
+            "adding section %p to array %p in position %zu with addr %p\n",
+            objsec,
+            new_mrg->sub.buf,
+            next_mrg_idx,
+            new);
+    *new = objsec;
 }
 
 static void merge_symtabs(ezld_obj_t *obj) {
@@ -119,7 +126,8 @@ static void merge_symtabs(ezld_obj_t *obj) {
         uint32_t glob_shidx   = sym_sec->merged_sec->index;
         uint32_t glob_sym_off = entry.st_value + sym_sec->transl_off;
 
-        obj_sym->glob_idx           = g_self->glob_symtab.len;
+        // Adding 1 for NULL entry
+        obj_sym->glob_idx           = g_self->glob_symtab.len + 1;
         ezld_global_sym_t *glob_sym = ezld_array_push(g_self->glob_symtab);
         glob_sym->sym.st_shndx      = glob_shidx;
         glob_sym->sym.st_value      = glob_sym_off;
@@ -233,4 +241,25 @@ static void read_objects(void) {
 void ezld_link(ezld_instance_t *instance, FILE *output_file) {
     g_self = instance;
     read_objects();
+
+    for (size_t i = 0; i < g_self->mrg_sec.len; i++) {
+        ezld_merged_sec_t *m = &g_self->mrg_sec.buf[i];
+        fprintf(stderr, "merged section: %s\n", m->name);
+
+        for (size_t j = 0; j < m->sub.len; j++) {
+            ezld_obj_sec_t *s = m->sub.buf[i];
+            fprintf(stderr, "\t SEC: %p ", s);
+            fprintf(stderr,
+                    "%s (elems: %zu, transl: %zu)\n",
+                    s->o_file->path,
+                    s->sec_elems,
+                    s->transl_off);
+        }
+    }
+
+    for (size_t i = 0; i < g_self->glob_symtab.len; i++) {
+        ezld_global_sym_t *s = &g_self->glob_symtab.buf[i];
+        fprintf(
+            stderr, "SYM: %s = %u\n", s->strtab->o_file->path, s->sym.st_value);
+    }
 }
