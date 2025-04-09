@@ -22,9 +22,11 @@
 
 int main(int argc, const char *argv[]) {
     ezld_runtime_init(argc, argv);
-    ezld_instance_t instance = {.mrg_sec     = ezld_array_new(),
-                                .o_files     = ezld_array_new(),
-                                .glob_symtab = ezld_array_new()};
+    ezld_instance_t instance = {.entry_label = "_start"};
+
+    ezld_array_init(instance.config.sections);
+    *ezld_array_push(instance.config.sections) =
+        (ezld_sec_cfg_t){.name = ".text", .virt_addr = 0x4000};
 
     if (1 == argc) {
         ezld_runtime_exit(EZLD_ECODE_NOPARAM,

@@ -19,6 +19,7 @@
 #include <ezld/array.h>
 #include <musl/elf.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 
 typedef struct ezld_merged_sec ezld_merged_sec_t;
@@ -31,12 +32,13 @@ typedef struct ezld_obj_sec {
     size_t             transl_off;
     ezld_merged_sec_t *merged_sec;
     size_t             merged_idx;
-    void              *buf;
+    uint8_t           *buf;
 } ezld_obj_sec_t;
 
 typedef struct ezld_merged_sec {
-    const char *name;
-    size_t      index;
+    size_t name_idx;
+    size_t index;
+    size_t virt_addr;
     ezld_array(ezld_obj_sec_t *) sub;
 } ezld_merged_sec_t;
 
@@ -56,18 +58,32 @@ typedef struct ezld_obj {
     size_t      index;
     ezld_array(ezld_obj_sec_t) sections;
     ezld_obj_symtab_t symtab;
+    Elf32_Ehdr        ehdr;
 } ezld_obj_t;
 
-typedef struct ezld_global_sym {
-    Elf32_Sym       sym;
-    ezld_obj_sec_t *strtab;
-} ezld_global_sym_t;
+typedef struct ezld_global_str {
+    const char *str;
+    size_t      len;
+} ezld_global_str_t;
+
+typedef struct ezld_sec_cfg {
+    const char *name;
+    size_t      virt_addr;
+} ezld_sec_cfg_t;
+
+typedef struct ezld_config {
+    ezld_array(ezld_sec_cfg_t) sections;
+} ezld_config_t;
 
 typedef struct ezld_instance {
     ezld_array(ezld_merged_sec_t) mrg_sec;
     ezld_array(ezld_obj_t) o_files;
-    ezld_array(ezld_global_sym_t) glob_symtab;
+    ezld_array(Elf32_Sym) glob_symtab;
+    ezld_array(ezld_global_str_t) glob_strtab;
+    ezld_array(ezld_global_str_t) sh_strtab;
+    ezld_config_t   config;
     ezld_obj_sym_t *entry_sym;
+    const char     *entry_label;
 } ezld_instance_t;
 
 void ezld_link(ezld_instance_t *instance, FILE *output_file);
