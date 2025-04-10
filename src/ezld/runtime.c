@@ -93,3 +93,33 @@ void *ezld_runtime_alloc(size_t elemsz, size_t numelems) {
 
     return buf;
 }
+
+void ezld_runtime_write_exact(void       *buf,
+                              size_t      size,
+                              const char *filename,
+                              FILE       *file) {
+    if (size != fwrite(buf, 1, size, file)) {
+        ezld_runtime_exit(EZLD_ECODE_BADFILE,
+                          "could not write %zu byte(s) to file '%s'",
+                          size,
+                          (filename) ? filename : "");
+    }
+}
+
+void ezld_runtime_write_exact_at(void       *buf,
+                                 size_t      size,
+                                 size_t      off,
+                                 const char *filename,
+                                 FILE       *file) {
+    long start = ftell(file);
+    ezld_runtime_seek(off, filename, file);
+    ezld_runtime_write_exact(buf, size, filename, file);
+    (void)fseek(file, start, SEEK_SET);
+}
+
+void ezld_runtime_seek_end(const char *filename, FILE *file) {
+    if (0 != fseek(file, 0, SEEK_END)) {
+        ezld_runtime_exit(
+            EZLD_ECODE_BADFILE, "unable to find end of '%s'", filename);
+    }
+}

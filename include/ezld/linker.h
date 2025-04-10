@@ -40,6 +40,8 @@ typedef struct ezld_merged_sec {
     size_t index;
     size_t virt_addr;
     ezld_array(ezld_obj_sec_t *) sub;
+    size_t size;
+    size_t file_off;
 } ezld_merged_sec_t;
 
 typedef struct ezld_obj_sym_t {
@@ -64,6 +66,7 @@ typedef struct ezld_obj {
 typedef struct ezld_global_str {
     const char *str;
     size_t      len;
+    size_t      offset;
 } ezld_global_str_t;
 
 typedef struct ezld_sec_cfg {
@@ -73,6 +76,7 @@ typedef struct ezld_sec_cfg {
 
 typedef struct ezld_config {
     ezld_array(ezld_sec_cfg_t) sections;
+    size_t seg_align;
 } ezld_config_t;
 
 typedef struct ezld_instance {

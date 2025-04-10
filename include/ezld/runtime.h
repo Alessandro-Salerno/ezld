@@ -43,3 +43,13 @@ void  ezld_runtime_read_exact_at(void       *buf,
                                  const char *filename,
                                  FILE       *file);
 void *ezld_runtime_alloc(size_t elemsz, size_t numelems);
+void  ezld_runtime_write_exact(void       *buf,
+                               size_t      size,
+                               const char *filename,
+                               FILE       *file);
+void  ezld_runtime_write_exact_at(void       *buf,
+                                  size_t      size,
+                                  size_t      off,
+                                  const char *filename,
+                                  FILE       *file);
+void  ezld_runtime_seek_end(const char *filename, FILE *file);

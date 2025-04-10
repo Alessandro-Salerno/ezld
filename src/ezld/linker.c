@@ -22,6 +22,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "ezld/array.h"
+
 #define EZLD_ENTRY_NAME     1
 #define EZLD_GLOB_SYM_UNDEF 0
 
@@ -82,7 +84,11 @@ static size_t shstr_add(const char *str) {
         }
     }
 
-    ezld_global_str_t s                 = {.str = str, .len = strlen(str)};
+    ezld_global_str_t s = {.str = str, .len = strlen(str), .offset = 1};
+    if (!ezld_array_is_empty(g_self->sh_strtab)) {
+        s.offset = ezld_array_last(g_self->sh_strtab).offset +
+                   ezld_array_last(g_self->sh_strtab).len + 1;
+    }
     *ezld_array_push(g_self->sh_strtab) = s;
     return g_self->sh_strtab.len - 1;
 }
@@ -98,7 +104,11 @@ static size_t globstr_add(const char *str) {
         }
     }
 
-    ezld_global_str_t s                   = {.str = str, .len = strlen(str)};
+    ezld_global_str_t s = {.str = str, .len = strlen(str), .offset = 1};
+    if (!ezld_array_is_empty(g_self->glob_strtab)) {
+        s.offset = ezld_array_last(g_self->glob_strtab).offset +
+                   ezld_array_last(g_self->glob_strtab).len + 1;
+    }
     *ezld_array_push(g_self->glob_strtab) = s;
     return g_self->glob_strtab.len - 1;
 }
@@ -121,15 +131,16 @@ static void merge_section(ezld_obj_sec_t *objsec, size_t objsec_name) {
         if (mrg->name_idx == objsec_name) {
             size_t next_idx = mrg->sub.len;
 
-            if (0 == mrg->sub.len) {
+            if (ezld_array_is_empty(mrg->sub)) {
                 *ezld_array_push(mrg->sub) = objsec;
                 objsec->merged_idx         = next_idx;
                 objsec->merged_sec         = mrg;
                 objsec->transl_off         = 0;
+                mrg->size                  = objsec->shdr.sh_size;
                 return;
             }
 
-            ezld_obj_sec_t *last = mrg->sub.buf[next_idx - 1];
+            ezld_obj_sec_t *last = ezld_array_last(mrg->sub);
 
             if (objsec->shdr.sh_type != last->shdr.sh_type) {
                 ezld_runtime_exit(EZLD_ECODE_BADSEC,
@@ -164,6 +175,7 @@ static void merge_section(ezld_obj_sec_t *objsec, size_t objsec_name) {
             objsec->merged_idx         = next_idx;
             objsec->merged_sec         = mrg;
             objsec->transl_off         = transl_off;
+            mrg->size += objsec->shdr.sh_size;
             return;
         }
     }
@@ -172,6 +184,8 @@ static void merge_section(ezld_obj_sec_t *objsec, size_t objsec_name) {
     ezld_merged_sec_t *new_mrg      = ezld_array_push(g_self->mrg_sec);
     new_mrg->name_idx               = objsec_name;
     new_mrg->index                  = next_mrg_idx;
+    new_mrg->size                   = 0;
+    new_mrg->file_off               = 0;
     ezld_array_init(new_mrg->sub);
     objsec->merged_idx             = 0;
     objsec->merged_sec             = new_mrg;
@@ -297,7 +311,7 @@ static void read_object(ezld_obj_t *obj) {
         }
 
         if (ehdr.e_shstrndx == i) {
-            objsec->buf = shstrtab;
+            objsec->buf = (uint8_t *)shstrtab;
         }
 
         if (SHT_SYMTAB == shdr.sh_type) {
@@ -330,6 +344,26 @@ static void read_objects(void) {
     }
 }
 
+static size_t write_segment(ezld_merged_sec_t *sec,
+                            size_t             off,
+                            const char        *filename,
+                            FILE              *file) {
+    if (SHT_NOBITS == ezld_array_first(sec->sub)->shdr.sh_type) {
+        return 0;
+    }
+
+    size_t written = 0;
+    for (size_t i = 0; i < sec->sub.len; i++) {
+        ezld_obj_sec_t *s = sec->sub.buf[i];
+        read_section_contents(s);
+        ezld_runtime_write_exact_at(
+            s->buf, s->shdr.sh_size, off + written, filename, file);
+        written += s->shdr.sh_size;
+    }
+
+    return written;
+}
+
 static void write_exec(FILE *out) {
     Elf32_Ehdr ehdr             = {0};
     ehdr.e_ident[EI_MAG0]       = ELFMAG0;
@@ -345,6 +379,7 @@ static void write_exec(FILE *out) {
     ehdr.e_type    = ET_EXEC;
     ehdr.e_machine = EM_RISCV;
     ehdr.e_version = EV_CURRENT;
+    ehdr.e_ehsize  = sizeof(Elf32_Ehdr);
 
     if (NULL == g_self->entry_sym ||
         EZLD_GLOB_SYM_UNDEF == g_self->entry_sym->glob_idx) {
@@ -364,31 +399,123 @@ static void write_exec(FILE *out) {
 
     ehdr.e_phoff     = sizeof(Elf32_Ehdr);
     ehdr.e_phentsize = sizeof(Elf32_Phdr);
-    ehdr.e_shnum     = g_self->mrg_sec.len + 2;
+    ehdr.e_shnum     = 3; // NULL, ..., .strtab, .shstrtab
     ehdr.e_shentsize = sizeof(Elf32_Shdr);
+    ezld_array(struct {
+        Elf32_Phdr         phdr;
+        ezld_merged_sec_t *sec;
+    }) tmp_phdrs     = ezld_array_new();
+    size_t phdrs_end = ehdr.e_phoff;
 
     for (size_t i = 0; i < g_self->mrg_sec.len; i++) {
         ezld_merged_sec_t *mrg = &g_self->mrg_sec.buf[i];
 
-        if (0 != mrg->sub.len && (SHF_ALLOC & mrg->sub.buf[0]->shdr.sh_flags)) {
-            Elf32_Shdr base = mrg->sub.buf[0]->shdr;
+        if (!ezld_array_is_empty(mrg->sub) &&
+            (SHF_ALLOC & ezld_array_first(mrg->sub)->shdr.sh_flags)) {
+            Elf32_Shdr base = ezld_array_first(mrg->sub)->shdr;
             ehdr.e_phnum++;
-            size_t sz = mrg->sub.buf[mrg->sub.len - 1]->transl_off +
-                        mrg->sub.buf[mrg->sub.len - 1]->shdr.sh_size;
             Elf32_Phdr phdr = {0};
-            phdr.p_align    = base.sh_addralign;
+            phdr.p_type     = PT_LOAD;
+            phdr.p_align    = g_self->config.seg_align;
             phdr.p_vaddr    = mrg->virt_addr;
             phdr.p_paddr    = mrg->virt_addr;
-            phdr.p_memsz    = sz;
+            phdr.p_memsz    = mrg->size;
+            phdr.p_flags    = PF_R;
+            size_t sh_flags = ezld_array_first(mrg->sub)->shdr.sh_flags;
 
             if (SHT_NOBITS != base.sh_type) {
-                phdr.p_filesz = sz;
+                phdr.p_filesz = mrg->size;
             }
 
-            // TODO: set flags
-            // TODO: actually do this well
+            if (SHF_WRITE & sh_flags) {
+                phdr.p_flags |= PF_W;
+            }
+
+            if (SHF_EXECINSTR & sh_flags) {
+                phdr.p_flags = PF_X;
+            }
+
+            ezld_array_push(tmp_phdrs);
+            ezld_array_last(tmp_phdrs).phdr = phdr;
+            ezld_array_last(tmp_phdrs).sec  = mrg;
+            phdrs_end += sizeof(Elf32_Phdr);
         }
     }
+
+    size_t seg_off = phdrs_end;
+    for (size_t i = 0; i < tmp_phdrs.len; i++) {
+        Elf32_Phdr         phdr = tmp_phdrs.buf[i].phdr;
+        ezld_merged_sec_t *sec  = tmp_phdrs.buf[i].sec;
+        seg_off += phdr.p_align - (seg_off % phdr.p_align);
+        phdr.p_offset = seg_off;
+        sec->file_off = seg_off;
+        ezld_runtime_write_exact(&phdr, sizeof(Elf32_Phdr), "<output>", out);
+        (void)write_segment(sec, seg_off, "<output>", out);
+        seg_off += phdr.p_filesz;
+    }
+
+    ezld_runtime_seek(seg_off, "<output>", out);
+
+    size_t strtab_name_idx   = shstr_add(".strtab");
+    size_t shstrtab_name_idx = shstr_add(".shstrtab");
+    char   zero              = '\0';
+
+    Elf32_Shdr strtab_shdr = {0};
+    strtab_shdr.sh_type    = SHT_STRTAB;
+    strtab_shdr.sh_name    = shstr_from_idx(strtab_name_idx).offset;
+    strtab_shdr.sh_offset  = ftell(out);
+    strtab_shdr.sh_size    = 1;
+
+    ezld_runtime_write_exact(&zero, 1, "<output>", out);
+    for (size_t i = 0; i < g_self->glob_strtab.len; i++) {
+        ezld_global_str_t *str = &g_self->glob_strtab.buf[i];
+        ezld_runtime_write_exact(
+            (void *)(str->str), str->len + 1, "<output>", out);
+        strtab_shdr.sh_size += str->len + 1;
+    }
+
+    Elf32_Shdr shstrtab_shdr = strtab_shdr;
+    shstrtab_shdr.sh_offset  = ftell(out);
+    shstrtab_shdr.sh_size    = 1;
+    shstrtab_shdr.sh_name    = shstr_from_idx(shstrtab_name_idx).offset;
+
+    ezld_runtime_write_exact(&zero, 1, "<output>", out);
+    for (size_t i = 0; i < g_self->sh_strtab.len; i++) {
+        ezld_global_str_t *str = &g_self->sh_strtab.buf[i];
+        ezld_runtime_write_exact(
+            (void *)(str->str), str->len + 1, "<output>", out);
+        shstrtab_shdr.sh_size += str->len + 1;
+    }
+
+    ehdr.e_shoff = ftell(out);
+
+    Elf32_Shdr null_shdr = {0};
+    // TODO: set something?
+    ezld_runtime_write_exact(&null_shdr, sizeof(Elf32_Shdr), "<output>", out);
+
+    for (size_t i = 0; i < g_self->mrg_sec.len; i++) {
+        ezld_merged_sec_t *s = &g_self->mrg_sec.buf[i];
+
+        if (!ezld_array_is_empty(s->sub)) {
+            Elf32_Shdr shdr = ezld_array_first(s->sub)->shdr;
+            shdr.sh_size    = s->size;
+            shdr.sh_name    = shstr_from_idx(s->name_idx).offset;
+            shdr.sh_addr    = s->virt_addr;
+            shdr.sh_offset  = s->file_off;
+            ezld_runtime_write_exact(
+                &shdr, sizeof(Elf32_Shdr), "<output>", out);
+            ehdr.e_shnum++;
+        }
+    }
+
+    ezld_runtime_write_exact(&strtab_shdr, sizeof(Elf32_Shdr), "<output>", out);
+    ezld_runtime_write_exact(
+        &shstrtab_shdr, sizeof(Elf32_Shdr), "<output>", out);
+    ehdr.e_shstrndx = ehdr.e_shnum - 1;
+    ezld_runtime_seek(0, "<output>", out);
+    ezld_runtime_write_exact(&ehdr, sizeof(Elf32_Ehdr), "<output>", out);
+
+    ezld_array_free(tmp_phdrs);
 }
 
 static void align_sections(void) {
@@ -396,43 +523,32 @@ static void align_sections(void) {
         ezld_merged_sec_t *mrg      = &g_self->mrg_sec.buf[i];
         const char        *sec_name = shstr_from_idx(mrg->name_idx).str;
 
-        if (0 == mrg->sub.len) {
+        if (ezld_array_is_empty(mrg->sub)) {
             ezld_runtime_message(EZLD_EMSG_WARN, "section '%s' is empty");
             continue;
         }
 
-        if (0 == mrg->virt_addr) {
-            ezld_runtime_message(EZLD_EMSG_WARN,
-                                 "section '%s' has virtual address %08x",
-                                 sec_name,
-                                 0);
-        } else if (0 != mrg->virt_addr % mrg->sub.buf[0]->shdr.sh_addralign) {
-            size_t aligned_virt =
-                mrg->virt_addr +
-                (mrg->virt_addr % mrg->sub.buf[0]->shdr.sh_addralign);
-            ezld_runtime_message(
-                EZLD_EMSG_WARN,
-                "section '%s' has misaligned virtual address %08x (requires "
-                "alignment of %u byte(s)), changing to %08x",
-                mrg->virt_addr,
-                mrg->sub.buf[0]->shdr.sh_addralign,
-                aligned_virt);
-            mrg->virt_addr = aligned_virt;
+        size_t sh_align  = ezld_array_first(mrg->sub)->shdr.sh_addralign;
+        size_t seg_align = g_self->config.seg_align;
+        size_t align     = sh_align;
+        if (SHF_ALLOC & ezld_array_first(mrg->sub)->shdr.sh_flags &&
+            seg_align > sh_align) {
+            align = seg_align;
+        }
+        mrg->size = mrg->size + (align - (mrg->size % align));
+
+        if (!(SHF_ALLOC & ezld_array_first(mrg->sub)->shdr.sh_flags)) {
+            continue;
         }
 
         if (i > 0) {
             ezld_merged_sec_t *prev_mrg = &g_self->mrg_sec.buf[i - 1];
-            size_t             prev_mrg_sz =
-                prev_mrg->sub.buf[prev_mrg->sub.len - 1]->transl_off +
-                prev_mrg->sub.buf[prev_mrg->sub.len - 1]->shdr.sh_size;
 
-            if (mrg->virt_addr < prev_mrg->virt_addr + prev_mrg_sz) {
+            if (mrg->virt_addr < prev_mrg->virt_addr + prev_mrg->size) {
                 size_t diff =
-                    prev_mrg->virt_addr + prev_mrg_sz - mrg->virt_addr;
+                    prev_mrg->virt_addr + prev_mrg->size - mrg->virt_addr;
                 size_t old_virt = mrg->virt_addr;
                 mrg->virt_addr += diff;
-                mrg->virt_addr +=
-                    mrg->virt_addr % mrg->sub.buf[0]->shdr.sh_addralign;
 
                 ezld_runtime_message(EZLD_EMSG_WARN,
                                      "section '%s' has overlapping virtual "
@@ -440,6 +556,23 @@ static void align_sections(void) {
                                      old_virt,
                                      mrg->virt_addr);
             }
+        }
+
+        if (0 == mrg->virt_addr) {
+            ezld_runtime_message(EZLD_EMSG_WARN,
+                                 "section '%s' has virtual address %08x",
+                                 sec_name,
+                                 0);
+        } else if (0 != mrg->virt_addr % align) {
+            size_t aligned_virt = mrg->virt_addr + (mrg->virt_addr % align);
+            ezld_runtime_message(
+                EZLD_EMSG_WARN,
+                "section '%s' has misaligned virtual address 0x%08x (requires "
+                "alignment of %u byte(s)), changing to 0x%08x",
+                mrg->virt_addr,
+                align,
+                aligned_virt);
+            mrg->virt_addr = aligned_virt;
         }
     }
 }
@@ -468,6 +601,8 @@ void ezld_link(ezld_instance_t *instance, FILE *output_file) {
         mrg->index                 = instance->mrg_sec.len - 1;
         mrg->virt_addr             = sec_cfg.virt_addr;
         mrg->name_idx              = shstr_add(sec_cfg.name);
+        mrg->size                  = 0;
+        mrg->file_off              = 0;
         ezld_array_init(mrg->sub);
     }
 
@@ -503,4 +638,5 @@ void ezld_link(ezld_instance_t *instance, FILE *output_file) {
     }
 
     write_exec(output_file);
+    fclose(output_file);
 }

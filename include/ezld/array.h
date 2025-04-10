@@ -38,5 +38,8 @@
 #define ezld_array_free(arr) \
     free((arr).buf), (arr).buf = NULL, (arr).len = 0, (arr).cap = 0
 #define ezld_container_push(cont) ezld_array_push((cont).arr)
+#define ezld_array_first(arr)     ((arr).buf[0])
+#define ezld_array_last(arr)      ((arr).buf[(arr).len - 1])
+#define ezld_array_is_empty(arr)  (0 == (arr).len)
 
 size_t ezld_array_grow(void **buf, size_t *len, size_t *cap, size_t elemsz);

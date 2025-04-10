@@ -24,6 +24,7 @@ int main(int argc, const char *argv[]) {
     ezld_runtime_init(argc, argv);
     ezld_instance_t instance = {.entry_label = "_start"};
 
+    instance.config.seg_align = 0x1000;
     ezld_array_init(instance.config.sections);
     *ezld_array_push(instance.config.sections) =
         (ezld_sec_cfg_t){.name = ".text", .virt_addr = 0x4000};
@@ -54,6 +55,6 @@ int main(int argc, const char *argv[]) {
         ezld_runtime_exit(EZLD_ECODE_NOFILE, "could not open output file");
     }
 
-    ezld_link(&instance, NULL);
+    ezld_link(&instance, out);
     return EXIT_SUCCESS;
 }
