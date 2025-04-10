@@ -28,6 +28,18 @@
 // This can be global
 static ezld_instance_t *g_self = NULL;
 
+static ezld_merged_sec_t *find_mrg_sec(size_t name_idx) {
+    for (size_t i = 0; i < g_self->mrg_sec.len; i++) {
+        ezld_merged_sec_t *s = &g_self->mrg_sec.buf[i];
+
+        if (s->name_idx == name_idx) {
+            return s;
+        }
+    }
+
+    return NULL;
+}
+
 static size_t
 resolve_sym(Elf32_Sym *ret, ezld_obj_sym_t *objsym, size_t glob_stridx) {
     if (NULL != objsym && EZLD_GLOB_SYM_UNDEF != objsym->glob_idx) {
@@ -39,6 +51,9 @@ resolve_sym(Elf32_Sym *ret, ezld_obj_sym_t *objsym, size_t glob_stridx) {
         Elf32_Sym s = g_self->glob_symtab.buf[i];
 
         if (s.st_name == glob_stridx) {
+            if (NULL != objsym) {
+                objsym->glob_idx = i + 1;
+            }
             *ret = s;
             return i + 1;
         }
@@ -330,6 +345,50 @@ static void write_exec(FILE *out) {
     ehdr.e_type    = ET_EXEC;
     ehdr.e_machine = EM_RISCV;
     ehdr.e_version = EV_CURRENT;
+
+    if (NULL == g_self->entry_sym ||
+        EZLD_GLOB_SYM_UNDEF == g_self->entry_sym->glob_idx) {
+        ezld_runtime_message(EZLD_EMSG_WARN,
+                             "could not resolve entry point symbol '%s', "
+                             "defaulting to base of '.text' section",
+                             g_self->entry_label);
+        // TODO: actually default to that
+    } else {
+        Elf32_Sym gsym;
+        resolve_sym(&gsym, g_self->entry_sym, 0);
+        ehdr.e_entry = gsym.st_value;
+    }
+
+    // Header will be added later
+    ezld_runtime_seek(sizeof(Elf32_Ehdr), "<output>", out);
+
+    ehdr.e_phoff     = sizeof(Elf32_Ehdr);
+    ehdr.e_phentsize = sizeof(Elf32_Phdr);
+    ehdr.e_shnum     = g_self->mrg_sec.len + 2;
+    ehdr.e_shentsize = sizeof(Elf32_Shdr);
+
+    for (size_t i = 0; i < g_self->mrg_sec.len; i++) {
+        ezld_merged_sec_t *mrg = &g_self->mrg_sec.buf[i];
+
+        if (0 != mrg->sub.len && (SHF_ALLOC & mrg->sub.buf[0]->shdr.sh_flags)) {
+            Elf32_Shdr base = mrg->sub.buf[0]->shdr;
+            ehdr.e_phnum++;
+            size_t sz = mrg->sub.buf[mrg->sub.len - 1]->transl_off +
+                        mrg->sub.buf[mrg->sub.len - 1]->shdr.sh_size;
+            Elf32_Phdr phdr = {0};
+            phdr.p_align    = base.sh_addralign;
+            phdr.p_vaddr    = mrg->virt_addr;
+            phdr.p_paddr    = mrg->virt_addr;
+            phdr.p_memsz    = sz;
+
+            if (SHT_NOBITS != base.sh_type) {
+                phdr.p_filesz = sz;
+            }
+
+            // TODO: set flags
+            // TODO: actually do this well
+        }
+    }
 }
 
 static void align_sections(void) {
