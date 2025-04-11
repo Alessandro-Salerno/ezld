@@ -53,3 +53,4 @@ void  ezld_runtime_write_exact_at(void       *buf,
                                   const char *filename,
                                   FILE       *file);
 void  ezld_runtime_seek_end(const char *filename, FILE *file);
+void *ezld_runtime_realloc(void *buf, size_t size);

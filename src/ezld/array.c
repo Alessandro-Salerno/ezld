@@ -15,15 +15,15 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <ezld/array.h>
-#include <stdlib.h>
+#include <ezld/runtime.h>
 
 size_t ezld_array_grow(void **buf, size_t *len, size_t *cap, size_t elemsz) {
     if (0 == *cap) {
         *cap = 8;
-        *buf = malloc(elemsz * *cap);
+        *buf = ezld_runtime_alloc(elemsz, *cap);
     } else if (*len == *cap) {
         *cap *= 2;
-        *buf = realloc(*buf, elemsz * *cap);
+        *buf = ezld_runtime_realloc(*buf, elemsz * *cap);
     }
     (*len)++;
     return (*len) - 1;

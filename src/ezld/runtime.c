@@ -123,3 +123,13 @@ void ezld_runtime_seek_end(const char *filename, FILE *file) {
             EZLD_ECODE_BADFILE, "unable to find end of '%s'", filename);
     }
 }
+
+void *ezld_runtime_realloc(void *buf, size_t size) {
+    void *new_buf = realloc(buf, size);
+
+    if (NULL == new_buf) {
+        ezld_runtime_exit(EZLD_ECODE_NOMEM, "out of memory");
+    }
+
+    return new_buf;
+}
