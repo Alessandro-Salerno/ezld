@@ -723,7 +723,7 @@ static void open_output(void) {
 }
 
 static void open_objects(void) {
-    for (size_t i = 1; i < g_self->i_cfg.o_files.len; i++) {
+    for (size_t i = 0; i < g_self->i_cfg.o_files.len; i++) {
         const char *obj_path = g_self->i_cfg.o_files.buf[i];
         FILE       *file     = fopen(obj_path, "rb");
 
