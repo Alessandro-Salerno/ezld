@@ -98,6 +98,45 @@ typedef struct ezld_instance {
 // This can be global
 static ezld_instance_t *g_self = NULL;
 
+static inline bool endian_should_swap(void) {
+    return (ELFDATA2LSB == g_self->i_out.out_endian &&
+            ezld_runtime_is_big_endian()) ||
+           (ELFDATA2MSB == g_self->i_out.out_endian &&
+            !ezld_runtime_is_big_endian());
+}
+
+static inline uint16_t endian16(uint16_t val) {
+    if (endian_should_swap()) {
+        return (val << 8) | (val >> 8);
+    }
+
+    return val;
+}
+
+static inline uint16_t endian32(uint32_t val) {
+    if (endian_should_swap()) {
+        return ((val << 24) & 0xFF000000) | ((val << 8) & 0x00FF0000) |
+               ((val >> 8) & 0x0000FF00) | ((val >> 24) & 0x000000FF);
+    }
+
+    return val;
+}
+
+static inline uint16_t endian64(uint64_t val) {
+    if (endian_should_swap()) {
+        return ((val << 56) & 0xFF00000000000000ULL) |
+               ((val << 40) & 0x00FF000000000000ULL) |
+               ((val << 24) & 0x0000FF0000000000ULL) |
+               ((val << 8) & 0x000000FF00000000ULL) |
+               ((val >> 8) & 0x00000000FF000000ULL) |
+               ((val >> 24) & 0x0000000000FF0000ULL) |
+               ((val >> 40) & 0x000000000000FF00ULL) |
+               ((val >> 56) & 0x00000000000000FFULL);
+    }
+
+    return val;
+}
+
 static ezld_mrg_sec_t *find_mrg_sec(size_t name_idx) {
     for (size_t i = 0; i < g_self->i_mss.len; i++) {
         ezld_mrg_sec_t *s = &g_self->i_mss.buf[i];
@@ -700,6 +739,33 @@ static void open_objects(void) {
     }
 }
 
+static void free_instance(void) {
+    ezld_array_free(g_self->i_globsymtab);
+    ezld_array_free(g_self->i_globstrtab.gst_strs);
+    ezld_array_free(g_self->i_shstrtab.gst_strs);
+
+    for (size_t i = 0; i < g_self->i_objs.len; i++) {
+        ezld_obj_t *obj = &g_self->i_objs.buf[i];
+        for (size_t j = 0; j < obj->obj_oss.len; j++) {
+            ezld_obj_sec_t *sec = &obj->obj_oss.buf[i];
+            free(sec->os_data);
+            sec->os_data = NULL;
+        }
+        ezld_array_free(obj->obj_oss);
+        ezld_array_free(obj->obj_ost.ost_syms);
+        fclose(obj->obj_file);
+    }
+
+    for (size_t i = 0; i < g_self->i_mss.len; i++) {
+        ezld_mrg_sec_t *ms = &g_self->i_mss.buf[i];
+        ezld_array_free(ms->ms_oss);
+    }
+
+    ezld_array_free(g_self->i_mss);
+    ezld_array_free(g_self->i_objs);
+    fclose(g_self->i_out.out_file);
+}
+
 void ezld_link(ezld_config_t config) {
     ezld_instance_t instance = {0};
     ezld_array_init(instance.i_mss);
@@ -720,5 +786,5 @@ void ezld_link(ezld_config_t config) {
     virtualize_syms();
 
     write_exec();
-    fclose(g_self->i_out.out_file);
+    free_instance();
 }

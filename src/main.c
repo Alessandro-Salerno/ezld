@@ -41,5 +41,7 @@ int main(int argc, const char *argv[]) {
     }
 
     ezld_link(cfg);
+    ezld_array_free(cfg.o_files);
+    ezld_array_free(cfg.sections);
     return EXIT_SUCCESS;
 }

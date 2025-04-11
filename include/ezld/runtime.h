@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <stdbool.h>
 #include <stdio.h>
 
 #define EZLD_ECODE_NOPARAM -1
@@ -54,3 +55,4 @@ void  ezld_runtime_write_exact_at(void       *buf,
                                   FILE       *file);
 void  ezld_runtime_seek_end(const char *filename, FILE *file);
 void *ezld_runtime_realloc(void *buf, size_t size);
+bool  ezld_runtime_is_big_endian(void);

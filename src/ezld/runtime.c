@@ -133,3 +133,8 @@ void *ezld_runtime_realloc(void *buf, size_t size) {
 
     return new_buf;
 }
+
+bool ezld_runtime_is_big_endian(void) {
+    int i = 1;
+    return !*((char *)&i);
+}
