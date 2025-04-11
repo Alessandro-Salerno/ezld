@@ -17,16 +17,17 @@
 #include <ezld/array.h>
 #include <ezld/linker.h>
 #include <ezld/runtime.h>
-#include <stdio.h>
-#include <string.h>
 
 int main(int argc, const char *argv[]) {
     ezld_runtime_init(argc, argv);
-    ezld_instance_t instance = {.entry_label = "_start"};
+    ezld_config_t cfg = {0};
 
-    instance.config.seg_align = 0x1000;
-    ezld_array_init(instance.config.sections);
-    *ezld_array_push(instance.config.sections) =
+    cfg.entry_label = "_start";
+    cfg.out_path    = "a.out";
+    cfg.seg_align   = 0x1000;
+    ezld_array_init(cfg.o_files);
+    ezld_array_init(cfg.sections);
+    *ezld_array_push(cfg.sections) =
         (ezld_sec_cfg_t){.name = ".text", .virt_addr = 0x4000};
 
     if (1 == argc) {
@@ -36,25 +37,9 @@ int main(int argc, const char *argv[]) {
     }
 
     for (int i = 1; i < argc; i++) {
-        FILE *file = fopen(argv[i], "rb");
-
-        if (NULL == file) {
-            ezld_runtime_exit(
-                EZLD_ECODE_NOFILE, "could not open input file '%s'", argv[i]);
-        }
-
-        ezld_obj_t *obj = ezld_array_push(instance.o_files);
-        obj->file       = file;
-        obj->path       = argv[i];
-        obj->index      = i - 1;
+        *ezld_array_push(cfg.o_files) = argv[i];
     }
 
-    FILE *out = fopen("a.out", "wb");
-
-    if (NULL == out) {
-        ezld_runtime_exit(EZLD_ECODE_NOFILE, "could not open output file");
-    }
-
-    ezld_link(&instance, out);
+    ezld_link(cfg);
     return EXIT_SUCCESS;
 }
