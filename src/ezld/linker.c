@@ -423,8 +423,8 @@ static size_t write_segment(ezld_mrg_sec_t *sec,
     return written;
 }
 
-static Elf32_Shdr write_strtab(const char        *sec_name,
-                               ezld_glob_strtab_t strtab) {
+static Elf32_Shdr write_strtab(const char         *sec_name,
+                               ezld_glob_strtab_t *strtab) {
     char zero = '\0';
 
     Elf32_Shdr strtab_shdr = {0};
@@ -435,8 +435,8 @@ static Elf32_Shdr write_strtab(const char        *sec_name,
 
     ezld_runtime_write_exact(
         &zero, 1, g_self->i_cfg.out_path, g_self->i_out.out_file);
-    for (size_t i = 0; i < strtab.gst_strs.len; i++) {
-        ezld_glob_str_t *str = &strtab.gst_strs.buf[i];
+    for (size_t i = 0; i < strtab->gst_strs.len; i++) {
+        ezld_glob_str_t *str = &strtab->gst_strs.buf[i];
         ezld_runtime_write_exact((void *)(str->gs_data),
                                  str->gs_len + 1,
                                  g_self->i_cfg.out_path,
@@ -544,8 +544,8 @@ static void write_exec() {
 
     ezld_runtime_seek(seg_off, g_self->i_cfg.out_path, g_self->i_out.out_file);
 
-    Elf32_Shdr strtab_shdr   = write_strtab(".strtab", g_self->i_globstrtab);
-    Elf32_Shdr shstrtab_shdr = write_strtab(".shstrtab", g_self->i_shstrtab);
+    Elf32_Shdr strtab_shdr   = write_strtab(".strtab", &g_self->i_globstrtab);
+    Elf32_Shdr shstrtab_shdr = write_strtab(".shstrtab", &g_self->i_shstrtab);
 
     ehdr.e_shoff = ftell(g_self->i_out.out_file);
 
