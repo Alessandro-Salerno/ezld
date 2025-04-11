@@ -747,7 +747,7 @@ static void free_instance(void) {
     for (size_t i = 0; i < g_self->i_objs.len; i++) {
         ezld_obj_t *obj = &g_self->i_objs.buf[i];
         for (size_t j = 0; j < obj->obj_oss.len; j++) {
-            ezld_obj_sec_t *sec = &obj->obj_oss.buf[i];
+            ezld_obj_sec_t *sec = &obj->obj_oss.buf[j];
             free(sec->os_data);
             sec->os_data = NULL;
         }
