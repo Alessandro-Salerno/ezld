@@ -17,13 +17,15 @@
 #include <ezld/linker.h>
 #include <ezld/runtime.h>
 #include <musl/elf.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
-#define EZLD_ENTRY_NAME     1
-#define EZLD_GLOB_SYM_UNDEF 0
+#define EZLD_ENTRY_NAME         0
+#define EZLD_GLOB_SYM_UNDEF     0
+#define EZLD_ELF_OUT_FLAG_UNSET 0
 
 typedef struct ezld_mrg_sec ezld_mrg_sec_t;
 typedef struct ezld_obj     ezld_obj_t;
@@ -82,6 +84,7 @@ typedef struct ezld_output {
     uint8_t out_mach;
     uint8_t out_abi;
     uint8_t out_abi_ver;
+    bool    out_set;
 } ezld_output_t;
 
 typedef struct ezld_instance {
@@ -287,6 +290,59 @@ static void merge_section(ezld_obj_sec_t *objsec, size_t objsec_name) {
     *ezld_array_push(new_mrg->ms_oss) = objsec;
 }
 
+static Elf32_Shdr endian_shdr(Elf32_Shdr shdr) {
+    shdr.sh_flags     = endian32(shdr.sh_flags);
+    shdr.sh_addr      = endian32(shdr.sh_addr);
+    shdr.sh_addralign = endian32(shdr.sh_addralign);
+    shdr.sh_entsize   = endian32(shdr.sh_entsize);
+    shdr.sh_info      = endian32(shdr.sh_info);
+    shdr.sh_link      = endian32(shdr.sh_link);
+    shdr.sh_offset    = endian32(shdr.sh_offset);
+    shdr.sh_name      = endian32(shdr.sh_name);
+    shdr.sh_size      = endian32(shdr.sh_size);
+    shdr.sh_type      = endian32(shdr.sh_type);
+    return shdr;
+}
+
+static Elf32_Sym endian_sym(Elf32_Sym sym) {
+    sym.st_name  = endian32(sym.st_name);
+    sym.st_shndx = endian16(sym.st_shndx);
+    sym.st_size  = endian32(sym.st_size);
+    sym.st_value = endian32(sym.st_value);
+    return sym;
+}
+
+static Elf32_Shdr read_shdr(size_t shndx, bool randacc, ezld_obj_t *obj) {
+    Elf32_Shdr shdr = {0};
+    size_t     shsz = obj->obj_ehdr.e_shentsize;
+
+    if (randacc) {
+        ezld_runtime_read_exact_at(&shdr,
+                                   shsz,
+                                   shndx * shsz + obj->obj_ehdr.e_shoff,
+                                   obj->obj_filepath,
+                                   obj->obj_file);
+    } else {
+        ezld_runtime_read_exact(&shdr, shsz, obj->obj_filepath, obj->obj_file);
+    }
+
+    return endian_shdr(shdr);
+}
+
+static Elf32_Sym read_sym(size_t stndx, bool randacc, ezld_obj_t *obj) {
+    ezld_obj_sec_t *obj_symtab = obj->obj_ost.ost_os;
+    Elf32_Sym       entry      = {0};
+
+    if (randacc) {
+        // TODO: implement this?
+    } else {
+        ezld_runtime_read_exact(
+            &entry, sizeof(Elf32_Sym), obj->obj_filepath, obj->obj_file);
+    }
+
+    return endian_sym(entry);
+}
+
 static void merge_symtabs(ezld_obj_t *obj) {
     ezld_obj_sec_t *obj_symtab = obj->obj_ost.ost_os;
 
@@ -309,9 +365,7 @@ static void merge_symtabs(ezld_obj_t *obj) {
     ezld_array_alloc(obj->obj_ost.ost_syms, num_entires);
 
     for (size_t i = 0; i < num_entires; i++) {
-        Elf32_Sym entry = {0};
-        ezld_runtime_read_exact(
-            &entry, sizeof(Elf32_Sym), obj->obj_filepath, obj->obj_file);
+        Elf32_Sym entry = read_sym(i, false, obj);
 
         ezld_obj_sym_t *obj_sym = ezld_array_push(obj->obj_ost.ost_syms);
         obj_sym->osy_esym       = entry;
@@ -364,19 +418,36 @@ static void read_object(ezld_obj_t *obj) {
             EZLD_ECODE_BADFILE, "'%s' is not a 32-bit ELF", obj->obj_filepath);
     }
 
+    if (!g_self->i_out.out_set) {
+        g_self->i_out.out_set     = true;
+        g_self->i_out.out_endian  = ehdr.e_ident[EI_DATA];
+        g_self->i_out.out_abi     = ehdr.e_ident[EI_OSABI];
+        g_self->i_out.out_abi_ver = ehdr.e_ident[EI_ABIVERSION];
+        g_self->i_out.out_mach    = endian16(ehdr.e_machine);
+    }
+
+    ehdr.e_type      = endian16(ehdr.e_type);
+    ehdr.e_machine   = endian16(ehdr.e_machine);
+    ehdr.e_ehsize    = endian16(ehdr.e_ehsize);
+    ehdr.e_entry     = endian32(ehdr.e_entry);
+    ehdr.e_flags     = endian32(ehdr.e_flags);
+    ehdr.e_version   = endian32(ehdr.e_version);
+    ehdr.e_phnum     = endian16(ehdr.e_phnum);
+    ehdr.e_phoff     = endian32(ehdr.e_phoff);
+    ehdr.e_phentsize = endian16(ehdr.e_phentsize);
+    ehdr.e_shnum     = endian16(ehdr.e_shnum);
+    ehdr.e_shoff     = endian32(ehdr.e_shoff);
+    ehdr.e_shentsize = endian16(ehdr.e_shentsize);
+    ehdr.e_shstrndx  = endian16(ehdr.e_shstrndx);
+    obj->obj_ehdr    = ehdr;
+
     if (ET_REL != ehdr.e_type) {
         ezld_runtime_exit(EZLD_ECODE_BADFILE,
                           "'%s' is not a relocatable object file",
                           obj->obj_filepath);
     }
 
-    Elf32_Shdr shstrtab_sh = {0};
-    ezld_runtime_read_exact_at(&shstrtab_sh,
-                               sizeof(Elf32_Shdr),
-                               ehdr.e_shstrndx * sizeof(Elf32_Shdr) +
-                                   ehdr.e_shoff,
-                               obj->obj_filepath,
-                               obj->obj_file);
+    Elf32_Shdr shstrtab_sh = read_shdr(ehdr.e_shstrndx, true, obj);
 
     if (SHT_STRTAB != shstrtab_sh.sh_type) {
         ezld_runtime_message(
@@ -394,9 +465,7 @@ static void read_object(ezld_obj_t *obj) {
 
     ezld_runtime_seek(ehdr.e_shoff, obj->obj_filepath, obj->obj_file);
     for (size_t i = 0; i < ehdr.e_shnum; i++) {
-        Elf32_Shdr shdr = {0};
-        ezld_runtime_read_exact(
-            &shdr, sizeof(Elf32_Shdr), obj->obj_filepath, obj->obj_file);
+        Elf32_Shdr shdr = read_shdr(0, false, obj);
 
         ezld_obj_sec_t *objsec = ezld_array_push(obj->obj_oss);
         objsec->os_obj         = obj;
@@ -493,15 +562,15 @@ static void write_exec() {
     ehdr.e_ident[EI_MAG2]       = ELFMAG2;
     ehdr.e_ident[EI_MAG3]       = ELFMAG3;
     ehdr.e_ident[EI_CLASS]      = ELFCLASS32;
-    ehdr.e_ident[EI_DATA]       = ELFDATA2LSB;
+    ehdr.e_ident[EI_DATA]       = g_self->i_out.out_endian;
     ehdr.e_ident[EI_VERSION]    = 1;
-    ehdr.e_ident[EI_OSABI]      = ELFOSABI_SYSV;
-    ehdr.e_ident[EI_ABIVERSION] = 1;
+    ehdr.e_ident[EI_OSABI]      = g_self->i_out.out_abi;
+    ehdr.e_ident[EI_ABIVERSION] = g_self->i_out.out_abi_ver;
 
-    ehdr.e_type    = ET_EXEC;
-    ehdr.e_machine = EM_RISCV;
-    ehdr.e_version = EV_CURRENT;
-    ehdr.e_ehsize  = sizeof(Elf32_Ehdr);
+    ehdr.e_type    = endian16(ET_EXEC);
+    ehdr.e_machine = endian16(EM_RISCV);
+    ehdr.e_version = endian32(EV_CURRENT);
+    ehdr.e_ehsize  = endian16(sizeof(Elf32_Ehdr));
 
     if (NULL == g_self->i_osentry ||
         EZLD_GLOB_SYM_UNDEF == g_self->i_osentry->osy_globndx) {
@@ -513,7 +582,7 @@ static void write_exec() {
     } else {
         Elf32_Sym gsym;
         resolve_sym(&gsym, g_self->i_osentry, 0);
-        ehdr.e_entry = gsym.st_value;
+        ehdr.e_entry = endian32(gsym.st_value);
     }
 
     // Header will be added later
@@ -774,6 +843,7 @@ void ezld_link(ezld_config_t config) {
     ezld_array_init(instance.i_shstrtab.gst_strs);
     instance.i_osentry = NULL;
     instance.i_cfg     = config;
+    instance.i_out     = (ezld_output_t){0};
 
     g_self = &instance;
     globstr_add(instance.i_cfg.entry_label);
