@@ -867,6 +867,68 @@ static void free_instance(void) {
     fclose(g_self->i_out.out_file);
 }
 
+static void
+relocate(uint8_t *data, size_t outfile_off, size_t type, Elf32_Sym globsym) {
+    switch (type) {
+    default:
+        ezld_runtime_message(
+            EZLD_EMSG_WARN, "unknown relocation type %u", type);
+    }
+}
+
+static void rela_section(ezld_obj_sec_t *objsec) {
+    // TODO: handle case in which symtab is wrong
+    // size_t symtab_idx = objsec->os_shdr.sh_link;
+    size_t          target_idx = objsec->os_shdr.sh_info;
+    ezld_obj_sec_t *target     = &objsec->os_obj->obj_oss.buf[target_idx];
+    read_section_contents(target);
+    const char *target_name = shstr_from_idx(target->os_mrg->ms_name).gs_data;
+    size_t num_entries = objsec->os_shdr.sh_size / objsec->os_shdr.sh_entsize;
+    Elf32_Rela *relas  = (Elf32_Rela *)objsec->os_data;
+
+    // TODO: do this just like symbols: read from file
+    // instead of loading everything into memory
+    // TODO: fix endianness here too
+    for (size_t i = 0; i < num_entries; i++) {
+        Elf32_Rela      entry   = relas[i];
+        size_t          off     = entry.r_offset + target->os_mrg->ms_fileoff;
+        size_t          sym_idx = ELF32_R_SYM(entry.r_info);
+        size_t          type    = ELF32_R_TYPE(entry.r_info);
+        ezld_obj_sym_t *sym = &objsec->os_obj->obj_ost.ost_syms.buf[sym_idx];
+        Elf32_Sym       glob_sym;
+
+        if (EZLD_GLOB_SYM_UNDEF == resolve_sym(&glob_sym, sym, 0)) {
+            ezld_runtime_message(EZLD_EMSG_ERR,
+                                 "in %s:%s+%x (%s:%s+%lx): undefined reference",
+                                 objsec->os_obj->obj_filepath,
+                                 target_name,
+                                 entry.r_offset,
+                                 g_self->i_cfg.out_path,
+                                 target_name,
+                                 target->os_transl + entry.r_offset);
+            continue;
+        }
+
+        relocate(&target->os_data[entry.r_offset], off, type, glob_sym);
+    }
+}
+
+static void apply_relocations(void) {
+    for (size_t i = 0; i < g_self->i_objs.len; i++) {
+        ezld_obj_t *obj = &g_self->i_objs.buf[i];
+
+        for (size_t j = 0; j < obj->obj_oss.len; j++) {
+            ezld_obj_sec_t *objsec = &obj->obj_oss.buf[j];
+
+            // TODO: support REL as well
+            if (SHT_RELA == objsec->os_shdr.sh_type) {
+                read_section_contents(objsec);
+                rela_section(objsec);
+            }
+        }
+    }
+}
+
 void ezld_link(ezld_config_t config) {
     ezld_instance_t instance = {0};
     ezld_array_init(instance.i_mss);
@@ -888,5 +950,6 @@ void ezld_link(ezld_config_t config) {
     virtualize_syms();
 
     write_exec();
+    apply_relocations();
     free_instance();
 }
