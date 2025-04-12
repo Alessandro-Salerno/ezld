@@ -19,11 +19,12 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#define EZLD_ECODE_NOPARAM -1
-#define EZLD_ECODE_NOFILE  -2
-#define EZLD_ECODE_BADFILE -3
-#define EZLD_ECODE_NOMEM   -4
-#define EZLD_ECODE_BADSEC  -5
+#define EZLD_ECODE_NOPARAM  -1
+#define EZLD_ECODE_NOFILE   -2
+#define EZLD_ECODE_BADFILE  -3
+#define EZLD_ECODE_NOMEM    -4
+#define EZLD_ECODE_BADSEC   -5
+#define EZLD_ECODE_BADPARAM -6
 
 #define EZLD_EMSG_WARN "warning"
 #define EZLD_EMSG_ERR  "error"

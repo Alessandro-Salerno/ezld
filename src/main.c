@@ -17,6 +17,7 @@
 #include <ezld/array.h>
 #include <ezld/linker.h>
 #include <ezld/runtime.h>
+#include <tarman/cli-parser.h>
 
 int main(int argc, const char *argv[]) {
     ezld_runtime_init(argc, argv);
@@ -30,17 +31,10 @@ int main(int argc, const char *argv[]) {
     *ezld_array_push(cfg.sections) =
         (ezld_sec_cfg_t){.name = ".text", .virt_addr = 0x4000};
 
-    if (1 == argc) {
-        ezld_runtime_exit(EZLD_ECODE_NOPARAM,
-                          "insufficient commandline arguments: need to specify "
-                          "files to link");
-    }
+    cli_exec_t command = ezld_link;
+    cli_parse(argc, argv, &cfg, &command);
 
-    for (int i = 1; i < argc; i++) {
-        *ezld_array_push(cfg.o_files) = argv[i];
-    }
-
-    ezld_link(cfg);
+    command(cfg);
     ezld_array_free(cfg.o_files);
     ezld_array_free(cfg.sections);
     return EXIT_SUCCESS;
