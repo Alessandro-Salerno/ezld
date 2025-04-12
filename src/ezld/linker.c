@@ -50,8 +50,9 @@ typedef struct ezld_mrg_sec {
 } ezld_mrg_sec_t;
 
 typedef struct ezld_obj_sym_t {
-    Elf32_Sym osy_esym;
-    size_t    osy_globndx;
+    Elf32_Sym   osy_esym;
+    size_t      osy_globndx;
+    const char *osy_name;
 } ezld_obj_sym_t;
 
 typedef struct ezld_obj_symtab {
@@ -108,6 +109,15 @@ static inline bool endian_should_swap(void) {
             !ezld_runtime_is_big_endian());
 }
 
+static inline uint32_t mask32(uint32_t mask) {
+    if (ezld_runtime_is_big_endian()) {
+        return ((mask << 24) & 0xFF000000) | ((mask << 8) & 0x00FF0000) |
+               ((mask >> 8) & 0x0000FF00) | ((mask >> 24) & 0x000000FF);
+    }
+
+    return mask;
+}
+
 static inline uint16_t endian16(uint16_t val) {
     if (endian_should_swap()) {
         return (val << 8) | (val >> 8);
@@ -152,28 +162,6 @@ static ezld_mrg_sec_t *find_mrg_sec(size_t name_idx) {
     return NULL;
 }
 
-static size_t
-resolve_sym(Elf32_Sym *ret, ezld_obj_sym_t *objsym, size_t glob_stridx) {
-    if (NULL != objsym && EZLD_GLOB_SYM_UNDEF != objsym->osy_globndx) {
-        *ret = g_self->i_globsymtab.buf[objsym->osy_globndx - 1];
-        return objsym->osy_globndx;
-    }
-
-    for (size_t i = 0; i < g_self->i_globsymtab.len; i++) {
-        Elf32_Sym s = g_self->i_globsymtab.buf[i];
-
-        if (s.st_name == glob_stridx) {
-            if (NULL != objsym) {
-                objsym->osy_globndx = i + 1;
-            }
-            *ret = s;
-            return i + 1;
-        }
-    }
-
-    return EZLD_GLOB_SYM_UNDEF;
-}
-
 static ezld_glob_str_t shstr_from_idx(size_t shstr_idx) {
     return g_self->i_shstrtab.gst_strs.buf[shstr_idx];
 }
@@ -208,6 +196,34 @@ static size_t shstr_add(const char *str) {
 
 static size_t globstr_add(const char *str) {
     return strtab_add(str, &g_self->i_globstrtab);
+}
+
+static size_t resolve_sym(Elf32_Sym      *ret,
+                          ezld_obj_sym_t *objsym,
+                          size_t          glob_stridx,
+                          bool            use_sym_name) {
+    if (NULL != objsym && EZLD_GLOB_SYM_UNDEF != objsym->osy_globndx) {
+        *ret = g_self->i_globsymtab.buf[objsym->osy_globndx - 1];
+        return objsym->osy_globndx;
+    }
+
+    if (use_sym_name && NULL != objsym && NULL != objsym->osy_name) {
+        glob_stridx = globstr_add(objsym->osy_name);
+    }
+
+    for (size_t i = 0; i < g_self->i_globsymtab.len; i++) {
+        Elf32_Sym s = g_self->i_globsymtab.buf[i];
+
+        if (s.st_name == glob_stridx) {
+            if (NULL != objsym) {
+                objsym->osy_globndx = i + 1;
+            }
+            *ret = s;
+            return i + 1;
+        }
+    }
+
+    return EZLD_GLOB_SYM_UNDEF;
 }
 
 static void read_section_contents(ezld_obj_sec_t *sec) {
@@ -398,6 +414,7 @@ static void merge_symtabs(ezld_obj_t *obj) {
 
         ezld_obj_sym_t *obj_sym = ezld_array_push(obj->obj_ost.ost_syms);
         obj_sym->osy_esym       = entry;
+        obj_sym->osy_name       = (char *)&strtab_sec->os_data[entry.st_name];
 
         if (SHN_UNDEF == entry.st_shndx) {
             obj_sym->osy_globndx = 0;
@@ -412,10 +429,9 @@ static void merge_symtabs(ezld_obj_t *obj) {
         Elf32_Sym *glob_sym = ezld_array_push(g_self->i_globsymtab);
         glob_sym->st_shndx  = glob_shidx;
         glob_sym->st_value  = glob_sym_off;
-        glob_sym->st_name =
-            globstr_add((char *)&strtab_sec->os_data[entry.st_name]);
-        glob_sym->st_size = entry.st_size;
-        glob_sym->st_info = entry.st_info;
+        glob_sym->st_name   = globstr_add(obj_sym->osy_name);
+        glob_sym->st_size   = entry.st_size;
+        glob_sym->st_info   = entry.st_info;
 
         // This starts at 1 to use 0 as NULL
         obj_sym->osy_globndx = g_self->i_globsymtab.len;
@@ -455,20 +471,8 @@ static void read_object(ezld_obj_t *obj) {
         g_self->i_out.out_mach    = endian16(ehdr.e_machine);
     }
 
-    ehdr.e_type      = endian16(ehdr.e_type);
-    ehdr.e_machine   = endian16(ehdr.e_machine);
-    ehdr.e_ehsize    = endian16(ehdr.e_ehsize);
-    ehdr.e_entry     = endian32(ehdr.e_entry);
-    ehdr.e_flags     = endian32(ehdr.e_flags);
-    ehdr.e_version   = endian32(ehdr.e_version);
-    ehdr.e_phnum     = endian16(ehdr.e_phnum);
-    ehdr.e_phoff     = endian32(ehdr.e_phoff);
-    ehdr.e_phentsize = endian16(ehdr.e_phentsize);
-    ehdr.e_shnum     = endian16(ehdr.e_shnum);
-    ehdr.e_shoff     = endian32(ehdr.e_shoff);
-    ehdr.e_shentsize = endian16(ehdr.e_shentsize);
-    ehdr.e_shstrndx  = endian16(ehdr.e_shstrndx);
-    obj->obj_ehdr    = ehdr;
+    ehdr          = endian_ehdr(ehdr);
+    obj->obj_ehdr = ehdr;
 
     if (ET_REL != ehdr.e_type) {
         ezld_runtime_exit(EZLD_ECODE_BADFILE,
@@ -512,20 +516,18 @@ static void read_object(ezld_obj_t *obj) {
 
         if (SHT_SYMTAB == shdr.sh_type) {
             if (NULL != obj->obj_ost.ost_os) {
-                ezld_runtime_message(EZLD_EMSG_WARN,
-                                     "object file '%s' has more than one "
-                                     "section of type SHT_SYMTAB",
-                                     obj->obj_filepath);
+                ezld_runtime_message(
+                    EZLD_EMSG_WARN,
+                    "object file '%s' has more than one "
+                    "section of type SHT_SYMTAB, using first one",
+                    obj->obj_filepath);
             } else {
                 obj->obj_ost.ost_os = objsec;
                 objsec->os_mrg      = NULL;
                 objsec->os_ndx      = 0;
             }
-            continue;
-        }
-
-        if (SHT_PROGBITS == shdr.sh_type || SHT_NOBITS == shdr.sh_type ||
-            SHT_SYMTAB == shdr.sh_type) {
+        } else if (SHT_PROGBITS == shdr.sh_type || SHT_NOBITS == shdr.sh_type ||
+                   SHT_SYMTAB == shdr.sh_type) {
             const char *objsec_name = &shstrtab[shdr.sh_name];
             merge_section(objsec, shstr_add(objsec_name));
         }
@@ -610,7 +612,7 @@ static void write_exec() {
         // TODO: actually default to that
     } else {
         Elf32_Sym gsym;
-        resolve_sym(&gsym, g_self->i_osentry, 0);
+        resolve_sym(&gsym, g_self->i_osentry, EZLD_ENTRY_NAME, false);
         ehdr.e_entry = gsym.st_value;
     }
 
@@ -867,13 +869,58 @@ static void free_instance(void) {
     fclose(g_self->i_out.out_file);
 }
 
-static void
-relocate(uint8_t *data, size_t outfile_off, size_t type, Elf32_Sym globsym) {
+static void relocate(uint8_t  *data,
+                     size_t    bufsz,
+                     size_t    outfile_off,
+                     size_t    type,
+                     Elf32_Sym globsym) {
+#define REQUIRE(bytes)                                              \
+    if (bufsz < bytes) {                                            \
+        ezld_runtime_message(EZLD_EMSG_ERR,                         \
+                             "out of bounds relocation, ignoring"); \
+        break;                                                      \
+    }
+#define REGION(type)       *(type *)data
+#define BITMASK_HI32(bits) (mask32(~(uint32_t)(0) << (32 - bits)))
+#define WRITE(val)                                      \
+    ezld_runtime_write_exact_at(&val,                   \
+                                sizeof val,             \
+                                outfile_off,            \
+                                g_self->i_cfg.out_path, \
+                                g_self->i_out.out_file)
+
+    ezld_runtime_seek(
+        outfile_off, g_self->i_cfg.out_path, g_self->i_out.out_file);
+
     switch (type) {
+    case R_RISCV_BRANCH:
+        REQUIRE(4);
+        break;
+
+    case R_RISCV_JAL:
+        REQUIRE(4);
+        break;
+
+    case R_RISCV_HI20:
+        REQUIRE(4);
+        uint32_t inst = REGION(uint32_t);
+        inst = (inst & ~BITMASK_HI32(20)) | mask32(globsym.st_value << 12);
+        WRITE(inst);
+        break;
+
+    case R_RISCV_LO12_I:
+        REQUIRE(4);
+        break;
+
+    case R_RISCV_LO12_S:
+        REQUIRE(4);
+        break;
+
     default:
         ezld_runtime_message(
-            EZLD_EMSG_WARN, "unknown relocation type %u", type);
+            EZLD_EMSG_WARN, "unsupported relocation type %u, ignoring", type);
     }
+#undef REQUIRE
 }
 
 static void rela_section(ezld_obj_sec_t *objsec) {
@@ -897,19 +944,25 @@ static void rela_section(ezld_obj_sec_t *objsec) {
         ezld_obj_sym_t *sym = &objsec->os_obj->obj_ost.ost_syms.buf[sym_idx];
         Elf32_Sym       glob_sym;
 
-        if (EZLD_GLOB_SYM_UNDEF == resolve_sym(&glob_sym, sym, 0)) {
-            ezld_runtime_message(EZLD_EMSG_ERR,
-                                 "in %s:%s+%x (%s:%s+%lx): undefined reference",
-                                 objsec->os_obj->obj_filepath,
-                                 target_name,
-                                 entry.r_offset,
-                                 g_self->i_cfg.out_path,
-                                 target_name,
-                                 target->os_transl + entry.r_offset);
+        if (EZLD_GLOB_SYM_UNDEF == resolve_sym(&glob_sym, sym, 0, true)) {
+            ezld_runtime_message(
+                EZLD_EMSG_ERR,
+                "in %s:%s+0x%x (%s:%s+0x%lx): undefined reference to '%s'",
+                objsec->os_obj->obj_filepath,
+                target_name,
+                entry.r_offset,
+                g_self->i_cfg.out_path,
+                target_name,
+                target->os_transl + entry.r_offset,
+                sym->osy_name);
             continue;
         }
 
-        relocate(&target->os_data[entry.r_offset], off, type, glob_sym);
+        relocate(&target->os_data[entry.r_offset],
+                 target->os_shdr.sh_size - entry.r_offset,
+                 off,
+                 type,
+                 glob_sym);
     }
 }
 
