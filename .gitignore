@@ -60,3 +60,4 @@ obj/
 .DS_Store
 
 crash-*
+fuzztest/
