@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-CC=gcc
+CC?=gcc
 CFLAGS=-Wall -Wpedantic -Wextra -std=gnu11 -Iinclude/ -DEXT_EZLD_BUILD="\"$(shell date +%y.%m.%d)\"" -lm
 LDFLAGS=
 
@@ -22,15 +22,17 @@ DEBUG_CFLAGS=-O0 -fsanitize=undefined -fsanitize=address -g
 DEBUG_LDFLAGS=
 RELEASE_CLFAGS=-O3 -Werror
 RELEASE_LDFLAGS=-flto
+FUZZER_CFLAGS=$(DEBUG_CFLAGS) -fsanitize=fuzzer
 
 CUSTOM_CFLAGS?=
 CUSTOM_LDFLAGS?=
+CUSTOM_SRC?=
 
 CFLAGS+=$(CUSTOM_CFLAGS)
 LDFLAGS+=$(CUSTOM_LDFLAGS)
 
 BIN=bin
-EXEC=$(BIN)/ezld
+EXEC?=$(BIN)/ezld
 
 ifeq ($(OS),Windows_NT)
 	TARMAN_OS=window
@@ -39,6 +41,7 @@ endif
 
 rwildcard=$(foreach d,$(wildcard $(1:=/*)),$(call rwildcard ,$d, $2) $(filter $(subst *, %, $2),$d))
 SRC=$(call rwildcard, src/, *.c)
+SRC+=$(CUSTOM_SRC)
 
 OBJ=$(patsubst src/%.c,obj/%.o, $(SRC))
 
@@ -63,11 +66,10 @@ obj/%.o: src/%.c
 	$(CC) $(CFLAGS) -c $^ -o $@
 	@echo
 
-$(PLUGIN_MAKEFILES): force
-	@echo Compiling plugin "'$(@D)'"
-	@$(MAKE) -C $(@D) DIST="../../$(BIN)/plugins" CC="$(CC)" SDK="../../$(BIN)/plugin-sdk.o" SDK_FLAGS="$(CUSTOM_CFLAGS) $(CUSTOM_LDFLAGS) -I../../include/" > /dev/null
-
 force: ;
+
+fuzz:
+	make CUSTOM_SRC=libfuzzer.c EXEC=$(BIN)/fuzz CC=clang CUSTOM_CFLAGS="$(FUZZER_CFLAGS)" CUSTOM_LDFLAGS=$(DEBUG_LDFLAGS) all && ./bin/fuzz
 
 dirs:
 	@mkdir -p obj/
