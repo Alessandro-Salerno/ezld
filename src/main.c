@@ -29,7 +29,9 @@ int main(int argc, const char *argv[]) {
     ezld_array_init(cfg.o_files);
     ezld_array_init(cfg.sections);
     *ezld_array_push(cfg.sections) =
-        (ezld_sec_cfg_t){.name = ".text", .virt_addr = 0x4000};
+        (ezld_sec_cfg_t){.name = ".text", .virt_addr = 0x00400000};
+    *ezld_array_push(cfg.sections) =
+        (ezld_sec_cfg_t){.name = ".data", .virt_addr = 0x10000000};
 
     cli_exec_t command = ezld_link;
     cli_parse(argc, argv, &cfg, &command);

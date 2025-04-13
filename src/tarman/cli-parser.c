@@ -72,6 +72,11 @@ void cli_parse(int            argc,
         // Skip next CLI argument if the option required an arguments
         // of its own
         if (opt_desc.has_argument) {
+            if (NULL == next) {
+                ezld_runtime_exit(EZLD_ECODE_BADPARAM,
+                                  "option '%s' requires exactly one argument",
+                                  argv[i]);
+            }
             i++;
         }
 

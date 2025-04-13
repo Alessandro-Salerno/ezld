@@ -16,6 +16,7 @@
 | along with this program.  If not, see <https://www.gnu.org/licenses/>. |
 *************************************************************************/
 
+#include <ezld/cli-commands.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,29 +24,40 @@
 
 static cli_drt_desc_t commands[] = {
     {"-h", "--help", NULL, false, cli_cmd_help, "show this menu"},
-    {"-v", "--version", NULL, false, NULL, "show version information"},
+    {"-v",
+     "--version",
+     NULL,
+     false,
+     ezld_clicmd_version,
+     "show version information"},
 };
 
 static cli_drt_desc_t options[] = {
     {"-e",
      "--entry-sym",
-     NULL,
-     false,
+     ezld_clicmd_entrysym,
+     true,
      NULL,
      "set the entry point symbol (default: '_start')"},
     {"-s",
      "--section",
-     NULL,
+     ezld_clicmd_section,
      true,
      NULL,
      "set the base virtual address for a given section (example: -s "
      ".text=0x4000)"},
     {"-a",
      "--align",
-     NULL,
+     ezld_clicmd_align,
      true,
      NULL,
-     "set the alignent of PT_LOAD segments (example: -a 0x1000)"}};
+     "set the alignent of PT_LOAD segments (default: 0x1000)"},
+    {"-o",
+     "--output",
+     ezld_clicmd_output,
+     true,
+     NULL,
+     "set the output file path (default: 'a.out')"}};
 
 static bool find_desc(cli_drt_desc_t  descriptors[],
                       size_t          num_desc,

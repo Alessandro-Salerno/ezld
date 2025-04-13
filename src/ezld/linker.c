@@ -744,7 +744,9 @@ static void align_sections(void) {
         const char     *sec_name = shstr_from_idx(mrg->ms_name).gs_data;
 
         if (ezld_array_is_empty(mrg->ms_oss)) {
-            ezld_runtime_message(EZLD_EMSG_WARN, "section '%s' is empty");
+            ezld_runtime_message(EZLD_EMSG_WARN,
+                                 "section '%s' is empty",
+                                 shstr_from_idx(mrg->ms_name).gs_data);
             continue;
         }
 
