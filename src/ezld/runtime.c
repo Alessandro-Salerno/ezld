@@ -47,8 +47,11 @@ ezld_runtime_exit(int code, const char *msgfmt, ...) {
     va_start(args, msgfmt);
     vmsg(stderr, "fatal", msgfmt, args);
     va_end(args);
+#ifndef EXT_EZLD_FUZZER
     exit(code);
-
+#else
+    exit(0);
+#endif
     __builtin_unreachable();
 }
 

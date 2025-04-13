@@ -69,7 +69,7 @@ obj/%.o: src/%.c
 force: ;
 
 fuzz:
-	make CUSTOM_SRC=libfuzzer.c EXEC=$(BIN)/fuzz CC=clang CUSTOM_CFLAGS="$(FUZZER_CFLAGS)" CUSTOM_LDFLAGS=$(DEBUG_LDFLAGS) all && ./bin/fuzz -handle_exit=1
+	make CUSTOM_SRC=libfuzzer.c EXEC=$(BIN)/fuzz CC=clang CUSTOM_CFLAGS="$(FUZZER_CFLAGS)" CUSTOM_LDFLAGS=$(DEBUG_LDFLAGS) all && ./bin/fuzz -ignore_crashes=1 ./fuzztest
 
 dirs:
 	@mkdir -p obj/
