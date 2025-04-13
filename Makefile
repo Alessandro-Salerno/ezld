@@ -22,7 +22,7 @@ DEBUG_CFLAGS=-O0 -fsanitize=undefined -fsanitize=address -g
 DEBUG_LDFLAGS=
 RELEASE_CLFAGS=-O3 -Werror
 RELEASE_LDFLAGS=-flto
-FUZZER_CFLAGS=$(DEBUG_CFLAGS) -fsanitize=fuzzer
+FUZZER_CFLAGS=$(DEBUG_CFLAGS) -fsanitize=fuzzer -DEXT_EZLD_FUZZER
 
 CUSTOM_CFLAGS?=
 CUSTOM_LDFLAGS?=
@@ -69,7 +69,7 @@ obj/%.o: src/%.c
 force: ;
 
 fuzz:
-	make CUSTOM_SRC=libfuzzer.c EXEC=$(BIN)/fuzz CC=clang CUSTOM_CFLAGS="$(FUZZER_CFLAGS)" CUSTOM_LDFLAGS=$(DEBUG_LDFLAGS) all && ./bin/fuzz
+	make CUSTOM_SRC=libfuzzer.c EXEC=$(BIN)/fuzz CC=clang CUSTOM_CFLAGS="$(FUZZER_CFLAGS)" CUSTOM_LDFLAGS=$(DEBUG_LDFLAGS) all && ./bin/fuzz -handle_exit=1
 
 dirs:
 	@mkdir -p obj/

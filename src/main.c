@@ -19,6 +19,7 @@
 #include <ezld/runtime.h>
 #include <tarman/cli-parser.h>
 
+#ifndef EXT_EZLD_FUZZER
 int main(int argc, const char *argv[]) {
     ezld_runtime_init(argc, argv);
     ezld_config_t cfg = {0};
@@ -41,3 +42,4 @@ int main(int argc, const char *argv[]) {
     ezld_array_free(cfg.sections);
     return EXIT_SUCCESS;
 }
+#endif

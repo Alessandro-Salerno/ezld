@@ -58,3 +58,5 @@ obj/
 
 # macos
 .DS_Store
+
+crash-*
