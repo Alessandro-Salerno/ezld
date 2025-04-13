@@ -17,7 +17,7 @@
 [![MIT License][license-shield]][license-url]
 ![](https://tokei.rs/b1/github/Alessandro-Salerno/ezld)
 
-Tiny, simple, and portable [Linker](https://en.wikipedia.org/wiki/Linker_(computing)) for the [ELF](https://en.wikipedia.org/wiki/Executable_and_Linkable_Format) format.
+Tiny, simple, and portable static [Linker](https://en.wikipedia.org/wiki/Linker_(computing)) for the [ELF](https://en.wikipedia.org/wiki/Executable_and_Linkable_Format) format.
 
 ## How to use ezld
 ezld features a small but functional CLI:
