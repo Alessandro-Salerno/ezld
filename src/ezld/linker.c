@@ -150,6 +150,11 @@ static inline uint16_t endian64(uint64_t val) {
     return val;
 }
 
+static inline int32_t sext(uint32_t x, int bits) {
+    int m = 32 - bits;
+    return ((int32_t)(x << m)) >> m;
+}
+
 static ezld_mrg_sec_t *find_mrg_sec(size_t name_idx) {
     for (size_t i = 0; i < g_self->i_mss.len; i++) {
         ezld_mrg_sec_t *s = &g_self->i_mss.buf[i];
@@ -586,7 +591,7 @@ static Elf32_Shdr write_strtab(const char         *sec_name,
     return endian_shdr(strtab_shdr);
 }
 
-static void write_exec() {
+static void write_exec(void) {
     Elf32_Ehdr ehdr             = {0};
     ehdr.e_ident[EI_MAG0]       = ELFMAG0;
     ehdr.e_ident[EI_MAG1]       = ELFMAG1;
@@ -869,10 +874,13 @@ static void free_instance(void) {
     fclose(g_self->i_out.out_file);
 }
 
+// TODO: fix HUGE endianness UB here
 static void relocate(uint8_t  *data,
                      size_t    bufsz,
                      size_t    outfile_off,
                      size_t    type,
+                     size_t    virt_addr,
+                     size_t    addend,
                      Elf32_Sym globsym) {
 #define REQUIRE(bytes)                                              \
     if (bufsz < bytes) {                                            \
@@ -880,8 +888,9 @@ static void relocate(uint8_t  *data,
                              "out of bounds relocation, ignoring"); \
         break;                                                      \
     }
-#define REGION(type)       *(type *)data
-#define BITMASK_HI32(bits) (mask32(~(uint32_t)(0) << (32 - bits)))
+#define REGION(type)    *(type *)data
+#define KEEP_HI32(bits) (mask32(~(uint32_t)(0) << (32 - bits)))
+#define KEEP_LO32(bits) (~KEEP_HI32((32 - bits)))
 #define WRITE(val)                                      \
     ezld_runtime_write_exact_at(&val,                   \
                                 sizeof val,             \
@@ -893,34 +902,81 @@ static void relocate(uint8_t  *data,
         outfile_off, g_self->i_cfg.out_path, g_self->i_out.out_file);
 
     switch (type) {
-    case R_RISCV_BRANCH:
+    case R_RISCV_BRANCH: {
         REQUIRE(4);
-        break;
-
-    case R_RISCV_JAL:
-        REQUIRE(4);
-        break;
-
-    case R_RISCV_HI20:
-        REQUIRE(4);
-        uint32_t inst = REGION(uint32_t);
-        inst = (inst & ~BITMASK_HI32(20)) | mask32(globsym.st_value << 12);
+        uint32_t inst    = REGION(uint32_t);
+        int32_t  val     = (int32_t)globsym.st_value + addend - virt_addr;
+        uint32_t uval    = (uint32_t)val;
+        uint32_t imm12   = (uval >> 12) & 0x1;
+        uint32_t imm10_5 = (uval >> 5) & 0x3F;
+        uint32_t imm4_1  = (uval >> 1) & 0xF;
+        uint32_t imm11   = (uval >> 11) & 0x1;
+        inst &= 0x01FFF07F;
+        inst |= (imm12 << 31);
+        inst |= (imm10_5 << 25);
+        inst |= (imm4_1 << 8);
+        inst |= (imm11 << 7);
         WRITE(inst);
         break;
+    }
 
-    case R_RISCV_LO12_I:
+    case R_RISCV_JAL: {
         REQUIRE(4);
+        uint32_t inst     = REGION(uint32_t);
+        int32_t  val      = (int32_t)globsym.st_value + addend - virt_addr;
+        uint32_t uval     = (uint32_t)val;
+        uint32_t imm20    = (uval >> 20) & 0x1;
+        uint32_t imm10_1  = (uval >> 1) & 0x3FF;
+        uint32_t imm11    = (uval >> 11) & 0x1;
+        uint32_t imm19_12 = (uval >> 12) & 0xFF;
+        inst &= 0x00000FFF;
+        inst |= (imm20 << 31);
+        inst |= (imm10_1 << 21);
+        inst |= (imm11 << 20);
+        inst |= (imm19_12 << 12);
+        WRITE(inst);
         break;
+    }
 
-    case R_RISCV_LO12_S:
+    case R_RISCV_HI20: {
         REQUIRE(4);
+        uint32_t inst = REGION(uint32_t);
+        inst =
+            (inst & KEEP_LO32(12)) | mask32(globsym.st_value & KEEP_HI32(20));
+        WRITE(inst);
         break;
+    }
+
+    case R_RISCV_LO12_I: {
+        REQUIRE(4);
+        uint32_t inst = REGION(uint32_t);
+        inst          = (inst & KEEP_LO32(20)) |
+               mask32((globsym.st_value & KEEP_LO32(12)) << 20);
+        WRITE(inst);
+        break;
+    }
+
+    case R_RISCV_LO12_S: {
+        REQUIRE(4);
+        uint32_t inst    = REGION(uint32_t);
+        uint32_t uval    = globsym.st_value + addend;
+        uint32_t imm11_5 = (uval >> 5) & 0x7F;
+        uint32_t imm4_0  = uval & 0x1F;
+        inst &= 0x01FFF07F;
+        inst |= (imm11_5 << 25);
+        inst |= (imm4_0 << 7);
+        WRITE(inst);
+        break;
+    }
 
     default:
         ezld_runtime_message(
             EZLD_EMSG_WARN, "unsupported relocation type %u, ignoring", type);
     }
 #undef REQUIRE
+#undef KEEP_HI32
+#undef KEEP_LO32
+#undef WRITE
 }
 
 static void rela_section(ezld_obj_sec_t *objsec) {
@@ -962,6 +1018,8 @@ static void rela_section(ezld_obj_sec_t *objsec) {
                  target->os_shdr.sh_size - entry.r_offset,
                  off,
                  type,
+                 target->os_mrg->ms_vaddr + target->os_transl + entry.r_offset,
+                 entry.r_addend,
                  glob_sym);
     }
 }
