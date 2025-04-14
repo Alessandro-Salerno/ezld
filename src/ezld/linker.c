@@ -774,7 +774,8 @@ static void align_sections(void) {
 
                 ezld_runtime_message(EZLD_EMSG_WARN,
                                      "section '%s' has overlapping virtual "
-                                     "address %08x, changing to %08x",
+                                     "address 0x%08x, changing to 0x%08x",
+                                     sec_name,
                                      old_virt,
                                      mrg->ms_vaddr);
             }
@@ -782,7 +783,7 @@ static void align_sections(void) {
 
         if (0 == mrg->ms_vaddr) {
             ezld_runtime_message(EZLD_EMSG_WARN,
-                                 "section '%s' has virtual address %08x",
+                                 "section '%s' has virtual address 0x%08x",
                                  sec_name,
                                  0);
         } else if (0 != mrg->ms_vaddr % align) {
@@ -791,6 +792,7 @@ static void align_sections(void) {
                 EZLD_EMSG_WARN,
                 "section '%s' has misaligned virtual address 0x%08x (requires "
                 "alignment of %u byte(s)), changing to 0x%08x",
+                sec_name,
                 mrg->ms_vaddr,
                 align,
                 aligned_virt);
