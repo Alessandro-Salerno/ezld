@@ -126,7 +126,7 @@ static inline uint16_t endian16(uint16_t val) {
     return val;
 }
 
-static inline uint16_t endian32(uint32_t val) {
+static inline uint32_t endian32(uint32_t val) {
     if (endian_should_swap()) {
         return ((val << 24) & 0xFF000000) | ((val << 8) & 0x00FF0000) |
                ((val >> 8) & 0x0000FF00) | ((val >> 24) & 0x000000FF);
@@ -135,7 +135,7 @@ static inline uint16_t endian32(uint32_t val) {
     return val;
 }
 
-static inline uint16_t endian64(uint64_t val) {
+static inline uint64_t endian64(uint64_t val) {
     if (endian_should_swap()) {
         return ((val << 56) & 0xFF00000000000000ULL) |
                ((val << 40) & 0x00FF000000000000ULL) |
