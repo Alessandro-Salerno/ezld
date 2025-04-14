@@ -32,7 +32,11 @@ jobs:
       run: sh ./.github/workflows/make-archives.sh macos-x86_64
     - name: Build binaries for target linux-arm64
       run: make clean && make release CC="zig cc -target aarch64-linux" RELEASE_LDFLAGS=""
+    - name: Build binaries for target windows-x86_64
+      run: make clean && make release CC="zig cc -target x86_64-windows" RELEASE_LDFLAGS=""
     - name: Archive binaries for target linux-arm64
       run: sh ./.github/workflows/make-archives.sh linux-arm64
+    - name: Archive binaries for target windows-x86_64
+      run: sh ./.github/workflows/make-archives.sh windows-x86_64
     - name: Upload all
       run: sh ./.github/workflows/upload.sh
