@@ -1,0 +1,38 @@
+name: C/C++ CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions: 
+  contents: write
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: configure
+      run: sh ./.github/workflows/configure.sh
+    - name: Build binaries for target linux-x86_64
+      run: make release CC="zig cc -target x86_64-linux"
+    - name: Archive binaries for target linux-x86_64
+      run: sh ./.github/workflows/make-archives.sh linux-x86_64
+    - name: Build binaries for target macos-arm64
+      run: make clean && make release CC="zig cc -target aarch64-macos" TARMAN_OS=darwin RELEASE_LDFLAGS=""
+    - name: Archive binaries for target macos-arm64
+      run: sh ./.github/workflows/make-archives.sh macos-arm64
+    - name: Build binaries for target macos-x86_64
+      run: make clean && make release CC="zig cc -target x86_64-macos" TARMAN_OS=darwin RELEASE_LDFLAGS=""
+    - name: Archive binaries for target macos-x86_64
+      run: sh ./.github/workflows/make-archives.sh macos-x86_64
+    - name: Build binaries for target linux-arm64
+      run: make clean && make release CC="zig cc -target aarch64-linux" RELEASE_LDFLAGS=""
+    - name: Archive binaries for target linux-arm64
+      run: sh ./.github/workflows/make-archives.sh linux-arm64
+    - name: Upload all
+      run: sh ./.github/workflows/upload.sh
