@@ -9,6 +9,7 @@ git rm -rf Makefile
 git rm -rf ./bin
 git rm -rf ./plugins
 git rm -rf compile_flags.txt
+git rm -rf libfuzzer.c
 
 git commit -m "new bundle"
 git push --set-upstream origin latest-build --force

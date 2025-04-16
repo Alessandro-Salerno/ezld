@@ -19,7 +19,7 @@
 #include <ezld/runtime.h>
 #include <tarman/cli-parser.h>
 
-#ifndef EXT_EZLD_FUZZER
+#ifndef EXT_EZLD_NOMAIN
 int main(int argc, const char *argv[]) {
     ezld_runtime_init(argc, argv);
     ezld_config_t cfg = {0};

@@ -20,9 +20,10 @@ LDFLAGS=
 
 DEBUG_CFLAGS=-O0 -fsanitize=undefined -fsanitize=address -g
 DEBUG_LDFLAGS=
-RELEASE_CLFAGS=-O3 -Werror
+RELEASE_CLFAGS=-O2 -Werror
 RELEASE_LDFLAGS=-flto
-FUZZER_CFLAGS=$(DEBUG_CFLAGS) -fsanitize=fuzzer -DEXT_EZLD_FUZZER
+FUZZER_CFLAGS=$(DEBUG_CFLAGS) -fsanitize=fuzzer -DEXT_EZLD_NOMAIN
+LIBRARY_CFLAGS=$(RELEASE_CFLAGS) -DEXT_EZLD_NOMAIN
 
 CUSTOM_CFLAGS?=
 CUSTOM_LDFLAGS?=
@@ -33,11 +34,7 @@ LDFLAGS+=$(CUSTOM_LDFLAGS)
 
 BIN=bin
 EXEC?=$(BIN)/ezld
-
-ifeq ($(OS),Windows_NT)
-	TARMAN_OS=window
-	EXEC+=.exe
-endif
+LIB=$(BIN)/libezld.a
 
 rwildcard=$(foreach d,$(wildcard $(1:=/*)),$(call rwildcard ,$d, $2) $(filter $(subst *, %, $2),$d))
 SRC=$(call rwildcard, src/, *.c)
@@ -47,19 +44,32 @@ OBJ=$(patsubst src/%.c,obj/%.o, $(SRC))
 
 debug:
 	@echo =========== COMPILING IN DEBUG MODE ===========
-	@make all CUSTOM_CFLAGS="$(DEBUG_CFLAGS)" "CUSTOM_LDFLAGS=$(DEBUG_LDFLAGS)"
+	@make ezld CUSTOM_CFLAGS="$(DEBUG_CFLAGS)" "CUSTOM_LDFLAGS=$(DEBUG_LDFLAGS)"
 
 release:
-	@echo =========== COMPILING IN DEBUG MODE ===========
-	@make CUSTOM_CFLAGS=$(RELEASE_CLFAGS) CUSTOM_LDFLAGS=$(RELEASE_LDFLAGS) all
+	@echo =========== COMPILING IN RELEASE MODE ===========
+	@make CUSTOM_CFLAGS=$(RELEASE_CLFAGS) CUSTOM_LDFLAGS=$(RELEASE_LDFLAGS) ezld
 
-all: dirs $(OBJ) $(EXEC)
+library:
+	@echo =========== COMPILING AS A LIBRARY ===========
+	@make CUSTOM_CFLAGS=$(RELEASE_CLFAGS) CUSTOM_LDFLAGS=$(RELEASE_LDFLAGS) libezld
+
+compile: dirs $(OBJ)
+
+ezld: compile $(EXEC)
+	@echo
+	@echo All done!
+
+libezld: compile $(LIB)
 	@echo
 	@echo All done!
 
 $(EXEC): obj $(OBJ)
 	$(CC) $(LDFLAGS) $(CFLAGS) $(OBJ) -o $(EXEC)
 	@echo
+
+$(LIB): obj $(OBJ)
+	ar rcs $(LIB) $(OBJ)
 
 obj/%.o: src/%.c
 	@mkdir -p $(@D)
@@ -69,7 +79,7 @@ obj/%.o: src/%.c
 force: ;
 
 fuzz:
-	make CUSTOM_SRC=libfuzzer.c EXEC=$(BIN)/fuzz CC=clang CUSTOM_CFLAGS="$(FUZZER_CFLAGS)" CUSTOM_LDFLAGS=$(DEBUG_LDFLAGS) all && ./bin/fuzz -ignore_crashes=1 ./fuzztest
+	@make CUSTOM_SRC=libfuzzer.c EXEC=$(BIN)/fuzz CC=clang CUSTOM_CFLAGS="$(FUZZER_CFLAGS)" CUSTOM_LDFLAGS=$(DEBUG_LDFLAGS) ezld && ./bin/fuzz -ignore_crashes=1 ./fuzztest
 
 dirs:
 	@mkdir -p obj/

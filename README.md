@@ -48,6 +48,7 @@ Use the included `Makefile` to build:
 ```bash
 make debug    # Build with debug info, sanitizers, -O0
 make release  # Build optimized release version
+make library  # Build as a static library
 ```
 
 ---

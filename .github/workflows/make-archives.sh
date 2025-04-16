@@ -6,6 +6,7 @@ mkdir $1
 mkdir ezld
 cp ./bin/ezld ./ezld/ezld
 tar -cvzf ./$1/ezld-$1.tar.gz ./ezld
+cp ./bin/ezld ./$1/ezld
 rm -rf ./ezld
 
 git add $1/
