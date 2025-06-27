@@ -69,7 +69,7 @@ $(EXEC): obj $(OBJ)
 	@echo
 
 $(LIB): obj $(OBJ)
-	ar rcs $(LIB) $(OBJ)
+	$(AR) rcs $(LIB) $(OBJ)
 
 obj/%.o: src/%.c
 	@mkdir -p $(@D)
