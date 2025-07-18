@@ -136,29 +136,29 @@ void ezld_clicmd_version(ezld_config_t config) {
 }
 
 void ezld_clicmd_entrysym(ezld_config_t *config, const char *next) {
-    config->entry_label = next;
+    config->cfg_entrysym = next;
 }
 
 void ezld_clicmd_section(ezld_config_t *config, const char *next) {
     char *key = NULL, *value = NULL;
     parse_assignment(next, &key, &value);
 
-    for (size_t i = 0; i < config->sections.len; i++) {
-        if (0 == strcmp(config->sections.buf[i].name, key)) {
-            config->sections.buf[i].virt_addr = parse_number(value);
+    for (size_t i = 0; i < config->cfg_sections.len; i++) {
+        if (0 == strcmp(config->cfg_sections.buf[i].sc_name, key)) {
+            config->cfg_sections.buf[i].sc_vaddr = parse_number(value);
             return;
         }
     }
 
-    ezld_sec_cfg_t *s = ezld_array_push(config->sections);
-    s->name           = key;
-    s->virt_addr      = parse_number(value);
+    ezld_sec_cfg_t *s = ezld_array_push(config->cfg_sections);
+    s->sc_name        = key;
+    s->sc_vaddr       = parse_number(value);
 }
 
 void ezld_clicmd_align(ezld_config_t *config, const char *next) {
-    config->seg_align = parse_number(next);
+    config->cfg_segalign = parse_number(next);
 }
 
 void ezld_clicmd_output(ezld_config_t *config, const char *next) {
-    config->out_path = next;
+    config->cfg_outpath = next;
 }

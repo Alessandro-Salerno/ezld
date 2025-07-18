@@ -27,81 +27,181 @@
 #define EZLD_GLOB_SYM_UNDEF     0
 #define EZLD_ELF_OUT_FLAG_UNSET 0
 
+#define EZLD_MAYBE_FUTURE __attribute__((used))
+
 typedef struct ezld_mrg_sec ezld_mrg_sec_t;
 typedef struct ezld_obj     ezld_obj_t;
 
+/**
+ * @brief An object file section
+ *
+ * This type represent a section in an ELF object file and is used for in-memory
+ * linking
+ */
 typedef struct ezld_obj_sec {
-    ezld_obj_t     *os_obj;
-    Elf32_Shdr      os_shdr;
-    size_t          os_elems;
-    size_t          os_transl;
+    /** Pointer to the object file struct to which this section belongs */
+    ezld_obj_t *os_obj;
+    /** Copy of the ELF section header of this section */
+    Elf32_Shdr os_shdr;
+    /** Number of "elements"" in this section. Equivilent to ``os_shdr.sh_size /
+     * os_shdr.sh_entsize` (or `os_shdr.sh_size` if `os_shdr.sh_entsize == 0`)
+     */
+    size_t os_elems;
+    /** The translation applied to this section in the final merged section.
+     * This field is not set upon loding, but rather on merge */
+    size_t os_transl;
+    /** Pointer to the merged section of which this object section is a part of.
+     * This field is not set upon loading, but rather on merge */
     ezld_mrg_sec_t *os_mrg;
-    size_t          os_ndx;
-    uint8_t        *os_data;
+    /** Index into `os_mrg.ms_oss` where this section is located */
+    size_t os_ndx;
+    /** Buffer containing all data relative to this section present in the
+     * relative segment in the object file. This field is not set upon loading,
+     * but rather it is set by the reader of this field if it is `NULL` */
+    uint8_t *os_data;
 } ezld_obj_sec_t;
 
+/**
+ * @brief An in-memory representation of a section obtained by merging sections
+ * of different object files
+ */
 typedef struct ezld_mrg_sec {
+    /** Index into the global string table where the name of this merged section
+     * lies */
     size_t ms_name;
+    /** Index into g_self.i_mss where this merged section lies */
     size_t ms_ndx;
+    /** Virtual address associated with this merged section */
     size_t ms_vaddr;
+    /** Memory size of this merged section */
     size_t ms_memsz;
+    /** Offset into the final executable file where the segment relative to this
+     * merged section is found. This field is 0 upon allocation, and is set in
+     * `write_exec` for use by that function and by relocation functions */
     size_t ms_fileoff;
+    /** Array of object file sections from which this merged section was
+     * obtained */
     ezld_array(ezld_obj_sec_t *) ms_oss;
 } ezld_mrg_sec_t;
 
+/**
+ * @brief A symbol contained in an object file symbol table
+ */
 typedef struct ezld_obj_sym_t {
-    Elf32_Sym   osy_esym;
-    size_t      osy_globndx;
+    /** Data read from the symbol table entry */
+    Elf32_Sym osy_esym;
+    /** Index into `g_self.i_globstrtab.gst_strs` where the name of this symbol
+     * is found. If equal to `EZLD_GLOB_SYM_UNDEF` (`0`), this field is to be
+     * considered unset and should not be used to read from the table */
+    size_t osy_globndx;
+    /** Name of this symbol obtained from the object file symbol table using
+     * `osy_esym.st_name` */
     const char *osy_name;
 } ezld_obj_sym_t;
 
+/**
+ * @brief An in-memory representation of an object file symbol table
+ */
 typedef struct ezld_obj_symtab {
+    /** Pointer to  the object file section struct of this symbol table */
     ezld_obj_sec_t *ost_os;
+    /** Array of symbols contained in this table */
     ezld_array(ezld_obj_sym_t) ost_syms;
 } ezld_obj_symtab_t;
 
+/**
+ * @brief An in-memory representation of an object file
+ */
 typedef struct ezld_obj {
-    const char       *obj_filepath;
-    FILE             *obj_file;
-    size_t            obj_ndx;
+    /** Path to the object file */
+    const char *obj_filepath;
+    /** Read-mode file */
+    FILE *obj_file;
+    /** Index into `g_self.i_objs` where this object instance is found */
+    size_t obj_ndx;
+    /** Object file symbol table instance relative to this object file. NOTE:
+     * Currently ezld supports only one symbol table per object file for
+     * simplicity, though ELF allows files to contain multiple ones, and most
+     * modern compilers and assemblers make use of this feature */
     ezld_obj_symtab_t obj_ost;
-    Elf32_Ehdr        obj_ehdr;
+    /**
+     * ELF header of this object file
+     */
+    Elf32_Ehdr obj_ehdr;
+    /** Array of object file sections contained in this object file */
     ezld_array(ezld_obj_sec_t) obj_oss;
 } ezld_obj_t;
 
+/**
+ * @brief An entry into a global string table
+ */
 typedef struct ezld_glob_str {
+    /** Buffer where the string's characters are hel */
     const char *gs_data;
-    size_t      gs_len;
-    size_t      gs_offset;
+    /** Length of the string */
+    size_t gs_len;
+    /** Offset into the string table where the buffer is found */
+    size_t gs_offset;
 } ezld_glob_str_t;
 
+/**
+ * @brief An in-memory string table
+ */
 typedef struct ezld_glob_strtab {
     ezld_array(ezld_glob_str_t) gst_strs;
 } ezld_glob_strtab_t;
 
+/**
+ * @brief A description of the final output of the linker
+ */
 typedef struct ezld_output {
-    FILE   *out_file;
+    /** Write-mode file of the final executable */
+    FILE *out_file;
+    /** Endianness of the output ELF */
     uint8_t out_endian;
+    /** Machine architecture of the output ELF */
     uint8_t out_mach;
+    /** ABI of the output ELF */
     uint8_t out_abi;
+    /** ABI version of the output ELF */
     uint8_t out_abi_ver;
-    bool    out_set;
+    /** `true` if the values above are set */
+    bool out_set;
 } ezld_output_t;
 
 typedef struct ezld_instance {
+    /** Array of merged sections */
     ezld_array(ezld_mrg_sec_t) i_mss;
+    /** Array of object files */
     ezld_array(ezld_obj_t) i_objs;
+    /** Global symbol table  where all symbols are added */
     ezld_array(Elf32_Sym) i_globsymtab;
+    /** Global string table */
     ezld_glob_strtab_t i_globstrtab;
+    /** Global section header string table */
     ezld_glob_strtab_t i_shstrtab;
-    ezld_config_t      i_cfg;
-    ezld_obj_sym_t    *i_osentry;
-    ezld_output_t      i_out;
+    /** User configuration */
+    ezld_config_t i_cfg;
+    /** Pointer to the entry symbol. This field is not set by the user or upon
+     * loading (unlike `i_cfg.cfg_entrysym`), but is set during linking when the
+     * symbol specified by `i_cfg.cfg_entrysym` is found. This field is `NULL`
+     * if the symbol was not found or has not been found yet */
+    ezld_obj_sym_t *i_osentry;
+    /** Final output */
+    ezld_output_t i_out;
 } ezld_instance_t;
 
-// This can be global
+// TODO: NOTE: When using ezld as a CLI tool, there's only one instance, so
+// keeping it global does not create issues. However, multithreaded applications
+// using libezld currently have to syncronize calls to `ezld_link` to avoid
+// overriding oneanother. This can be solved by turning this into a parameter
+// passed to all functions, or by syncronizing in ezld directly (worse)
 static ezld_instance_t *g_self = NULL;
 
+/**
+ * @return `true` if the endianness of the input/output files is different from
+ * that of the host machine, `false` otherwise
+ */
 static inline bool endian_should_swap(void) {
     return (ELFDATA2LSB == g_self->i_out.out_endian &&
             ezld_runtime_is_big_endian()) ||
@@ -109,6 +209,12 @@ static inline bool endian_should_swap(void) {
             !ezld_runtime_is_big_endian());
 }
 
+/**
+ * @brief Given a 32-bit bitmask, this function ensures returns the same bitmask
+ * but flipped if the host machine is big endian
+ *
+ * @param mask the mask
+ */
 static inline uint32_t mask32(uint32_t mask) {
     if (ezld_runtime_is_big_endian()) {
         return ((mask << 24) & 0xFF000000) | ((mask << 8) & 0x00FF0000) |
@@ -118,6 +224,14 @@ static inline uint32_t mask32(uint32_t mask) {
     return mask;
 }
 
+/**
+ * @brief This function ensures endianness compatibility for a 16-bit value
+ *
+ * @param val the value
+ *
+ * @return val but expresses in the correct endianness given the endianness of
+ * ELF and that of the host machine
+ */
 static inline uint16_t endian16(uint16_t val) {
     if (endian_should_swap()) {
         return (val << 8) | (val >> 8);
@@ -126,6 +240,14 @@ static inline uint16_t endian16(uint16_t val) {
     return val;
 }
 
+/**
+ * @brief This function ensures endianness compatibility for a 32-bit value
+ *
+ * @param val the value
+ *
+ * @return val but expresses in the correct endianness given the endianness of
+ * ELF and that of the host machine
+ */
 static inline uint32_t endian32(uint32_t val) {
     if (endian_should_swap()) {
         return ((val << 24) & 0xFF000000) | ((val << 8) & 0x00FF0000) |
@@ -135,6 +257,14 @@ static inline uint32_t endian32(uint32_t val) {
     return val;
 }
 
+/**
+ * @brief This function ensures endianness compatibility for a 64-bit value
+ *
+ * @param val the value
+ *
+ * @return val but expresses in the correct endianness given the endianness of
+ * ELF and that of the host machine
+ */
 static inline uint64_t endian64(uint64_t val) {
     if (endian_should_swap()) {
         return ((val << 56) & 0xFF00000000000000ULL) |
@@ -150,12 +280,19 @@ static inline uint64_t endian64(uint64_t val) {
     return val;
 }
 
-static inline int32_t sext(uint32_t x, int bits) {
+/**
+ * @brief performs sign extension of a value to 32 bits
+ *
+ * @param bits number of bits of the input value
+ *
+ * @return the sign extended value
+ */
+EZLD_MAYBE_FUTURE static inline int32_t sext(uint32_t x, int bits) {
     int m = 32 - bits;
     return ((int32_t)(x << m)) >> m;
 }
 
-static ezld_mrg_sec_t *find_mrg_sec(size_t name_idx) {
+EZLD_MAYBE_FUTURE static ezld_mrg_sec_t *find_mrg_sec(size_t name_idx) {
     for (size_t i = 0; i < g_self->i_mss.len; i++) {
         ezld_mrg_sec_t *s = &g_self->i_mss.buf[i];
 
@@ -171,7 +308,7 @@ static ezld_glob_str_t shstr_from_idx(size_t shstr_idx) {
     return g_self->i_shstrtab.gst_strs.buf[shstr_idx];
 }
 
-static ezld_glob_str_t globstr_from_idx(size_t glob_idx) {
+EZLD_MAYBE_FUTURE static ezld_glob_str_t globstr_from_idx(size_t glob_idx) {
     return g_self->i_globstrtab.gst_strs.buf[glob_idx];
 }
 
@@ -384,7 +521,11 @@ static Elf32_Sym read_sym(size_t stndx, bool randacc, ezld_obj_t *obj) {
     Elf32_Sym       entry      = {0};
 
     if (randacc) {
-        // TODO: implement this?
+        (void)stndx;
+        (void)obj_symtab;
+        // TODO: implement this? This function should technically be able to
+        // read at `strdx`, but this feature is not used in the code, and might
+        // never be used
     } else {
         ezld_runtime_read_exact(
             &entry, sizeof(Elf32_Sym), obj->obj_filepath, obj->obj_file);
@@ -578,12 +719,12 @@ static Elf32_Shdr write_strtab(const char         *sec_name,
     strtab_shdr.sh_size    = 1;
 
     ezld_runtime_write_exact(
-        &zero, 1, g_self->i_cfg.out_path, g_self->i_out.out_file);
+        &zero, 1, g_self->i_cfg.cfg_outpath, g_self->i_out.out_file);
     for (size_t i = 0; i < strtab->gst_strs.len; i++) {
         ezld_glob_str_t *str = &strtab->gst_strs.buf[i];
         ezld_runtime_write_exact((void *)(str->gs_data),
                                  str->gs_len + 1,
-                                 g_self->i_cfg.out_path,
+                                 g_self->i_cfg.cfg_outpath,
                                  g_self->i_out.out_file);
         strtab_shdr.sh_size += str->gs_len + 1;
     }
@@ -613,7 +754,7 @@ static void write_exec(void) {
         ezld_runtime_message(EZLD_EMSG_WARN,
                              "could not resolve entry point symbol '%s', "
                              "defaulting to base of '.text' section",
-                             g_self->i_cfg.entry_label);
+                             g_self->i_cfg.cfg_entrysym);
         // TODO: actually default to that
     } else {
         Elf32_Sym gsym;
@@ -623,7 +764,7 @@ static void write_exec(void) {
 
     // Header will be added later
     ezld_runtime_seek(
-        sizeof(Elf32_Ehdr), g_self->i_cfg.out_path, g_self->i_out.out_file);
+        sizeof(Elf32_Ehdr), g_self->i_cfg.cfg_outpath, g_self->i_out.out_file);
 
     ehdr.e_phoff     = sizeof(Elf32_Ehdr);
     ehdr.e_phentsize = sizeof(Elf32_Phdr);
@@ -644,7 +785,7 @@ static void write_exec(void) {
             ehdr.e_phnum++;
             Elf32_Phdr phdr = {0};
             phdr.p_type     = PT_LOAD;
-            phdr.p_align    = g_self->i_cfg.seg_align;
+            phdr.p_align    = g_self->i_cfg.cfg_segalign;
             phdr.p_vaddr    = mrg->ms_vaddr;
             phdr.p_paddr    = mrg->ms_vaddr;
             phdr.p_memsz    = mrg->ms_memsz;
@@ -663,7 +804,7 @@ static void write_exec(void) {
                 phdr.p_flags = PF_X;
             }
 
-            ezld_array_push(tmp_phdrs);
+            (void)ezld_array_push(tmp_phdrs);
             ezld_array_last(tmp_phdrs).phdr = phdr;
             ezld_array_last(tmp_phdrs).sec  = mrg;
             phdrs_end += sizeof(Elf32_Phdr);
@@ -680,14 +821,15 @@ static void write_exec(void) {
         phdr            = endian_phdr(phdr);
         ezld_runtime_write_exact(&phdr,
                                  sizeof(Elf32_Phdr),
-                                 g_self->i_cfg.out_path,
+                                 g_self->i_cfg.cfg_outpath,
                                  g_self->i_out.out_file);
         (void)write_segment(
-            sec, seg_off, g_self->i_cfg.out_path, g_self->i_out.out_file);
+            sec, seg_off, g_self->i_cfg.cfg_outpath, g_self->i_out.out_file);
         seg_off += phdr.p_filesz;
     }
 
-    ezld_runtime_seek(seg_off, g_self->i_cfg.out_path, g_self->i_out.out_file);
+    ezld_runtime_seek(
+        seg_off, g_self->i_cfg.cfg_outpath, g_self->i_out.out_file);
 
     Elf32_Shdr strtab_shdr   = write_strtab(".strtab", &g_self->i_globstrtab);
     Elf32_Shdr shstrtab_shdr = write_strtab(".shstrtab", &g_self->i_shstrtab);
@@ -698,7 +840,7 @@ static void write_exec(void) {
     // TODO: set something?
     ezld_runtime_write_exact(&null_shdr,
                              sizeof(Elf32_Shdr),
-                             g_self->i_cfg.out_path,
+                             g_self->i_cfg.cfg_outpath,
                              g_self->i_out.out_file);
 
     for (size_t i = 0; i < g_self->i_mss.len; i++) {
@@ -713,7 +855,7 @@ static void write_exec(void) {
             shdr            = endian_shdr(shdr);
             ezld_runtime_write_exact(&shdr,
                                      sizeof(Elf32_Shdr),
-                                     g_self->i_cfg.out_path,
+                                     g_self->i_cfg.cfg_outpath,
                                      g_self->i_out.out_file);
             ehdr.e_shnum++;
         }
@@ -721,18 +863,18 @@ static void write_exec(void) {
 
     ezld_runtime_write_exact(&strtab_shdr,
                              sizeof(Elf32_Shdr),
-                             g_self->i_cfg.out_path,
+                             g_self->i_cfg.cfg_outpath,
                              g_self->i_out.out_file);
     ezld_runtime_write_exact(&shstrtab_shdr,
                              sizeof(Elf32_Shdr),
-                             g_self->i_cfg.out_path,
+                             g_self->i_cfg.cfg_outpath,
                              g_self->i_out.out_file);
     ehdr.e_shstrndx = ehdr.e_shnum - 1;
     ehdr            = endian_ehdr(ehdr);
-    ezld_runtime_seek(0, g_self->i_cfg.out_path, g_self->i_out.out_file);
+    ezld_runtime_seek(0, g_self->i_cfg.cfg_outpath, g_self->i_out.out_file);
     ezld_runtime_write_exact(&ehdr,
                              sizeof(Elf32_Ehdr),
-                             g_self->i_cfg.out_path,
+                             g_self->i_cfg.cfg_outpath,
                              g_self->i_out.out_file);
 
     ezld_array_free(tmp_phdrs);
@@ -751,7 +893,7 @@ static void align_sections(void) {
         }
 
         size_t sh_align  = ezld_array_first(mrg->ms_oss)->os_shdr.sh_addralign;
-        size_t seg_align = g_self->i_cfg.seg_align;
+        size_t seg_align = g_self->i_cfg.cfg_segalign;
         size_t align     = sh_align;
         if (SHF_ALLOC & ezld_array_first(mrg->ms_oss)->os_shdr.sh_flags &&
             seg_align > sh_align) {
@@ -810,12 +952,12 @@ void virtualize_syms(void) {
 }
 
 static void setup_sections(void) {
-    for (size_t i = 0; i < g_self->i_cfg.sections.len; i++) {
-        ezld_sec_cfg_t  sec_cfg = g_self->i_cfg.sections.buf[i];
+    for (size_t i = 0; i < g_self->i_cfg.cfg_sections.len; i++) {
+        ezld_sec_cfg_t  sec_cfg = g_self->i_cfg.cfg_sections.buf[i];
         ezld_mrg_sec_t *mrg     = ezld_array_push(g_self->i_mss);
         mrg->ms_ndx             = g_self->i_mss.len - 1;
-        mrg->ms_vaddr           = sec_cfg.virt_addr;
-        mrg->ms_name            = shstr_add(sec_cfg.name);
+        mrg->ms_vaddr           = sec_cfg.sc_vaddr;
+        mrg->ms_name            = shstr_add(sec_cfg.sc_name);
         mrg->ms_memsz           = 0;
         mrg->ms_fileoff         = 0;
         ezld_array_init(mrg->ms_oss);
@@ -823,20 +965,20 @@ static void setup_sections(void) {
 }
 
 static void open_output(void) {
-    FILE *out = fopen(g_self->i_cfg.out_path, "wb");
+    FILE *out = fopen(g_self->i_cfg.cfg_outpath, "wb");
 
     if (NULL == out) {
         ezld_runtime_exit(EZLD_ECODE_NOFILE,
                           "could not open output file '%s'",
-                          g_self->i_cfg.out_path);
+                          g_self->i_cfg.cfg_outpath);
     }
 
     g_self->i_out.out_file = out;
 }
 
 static void open_objects(void) {
-    for (size_t i = 0; i < g_self->i_cfg.o_files.len; i++) {
-        const char *obj_path = g_self->i_cfg.o_files.buf[i];
+    for (size_t i = 0; i < g_self->i_cfg.cfg_objpaths.len; i++) {
+        const char *obj_path = g_self->i_cfg.cfg_objpaths.buf[i];
         FILE       *file     = fopen(obj_path, "rb");
 
         if (NULL == file) {
@@ -895,15 +1037,15 @@ static void relocate(uint8_t  *data,
 #define REGION(type)    *(type *)data
 #define KEEP_HI32(bits) (mask32(~(uint32_t)(0) << (32 - bits)))
 #define KEEP_LO32(bits) (~KEEP_HI32((32 - bits)))
-#define WRITE(val)                                      \
-    ezld_runtime_write_exact_at(&val,                   \
-                                sizeof val,             \
-                                outfile_off,            \
-                                g_self->i_cfg.out_path, \
+#define WRITE(val)                                         \
+    ezld_runtime_write_exact_at(&val,                      \
+                                sizeof val,                \
+                                outfile_off,               \
+                                g_self->i_cfg.cfg_outpath, \
                                 g_self->i_out.out_file)
 
     ezld_runtime_seek(
-        outfile_off, g_self->i_cfg.out_path, g_self->i_out.out_file);
+        outfile_off, g_self->i_cfg.cfg_outpath, g_self->i_out.out_file);
 
     switch (type) {
     case R_RISCV_BRANCH: {
@@ -1011,7 +1153,7 @@ static void rela_section(ezld_obj_sec_t *objsec) {
                 objsec->os_obj->obj_filepath,
                 target_name,
                 entry.r_offset,
-                g_self->i_cfg.out_path,
+                g_self->i_cfg.cfg_outpath,
                 target_name,
                 target->os_transl + entry.r_offset,
                 sym->osy_name);
@@ -1055,7 +1197,7 @@ void ezld_link(ezld_config_t config) {
     instance.i_out     = (ezld_output_t){0};
 
     g_self = &instance;
-    globstr_add(instance.i_cfg.entry_label);
+    globstr_add(instance.i_cfg.cfg_entrysym);
 
     open_output();
     open_objects();

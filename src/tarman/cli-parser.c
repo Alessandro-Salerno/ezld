@@ -65,7 +65,7 @@ void cli_parse(int            argc,
                     argv[0]);
             }
 
-            *ezld_array_push(cli_info->o_files) = argument;
+            *ezld_array_push(cli_info->cfg_objpaths) = argument;
             continue;
         }
 

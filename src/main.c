@@ -24,22 +24,23 @@ int main(int argc, const char *argv[]) {
     ezld_runtime_init(argc, argv);
     ezld_config_t cfg = {0};
 
-    cfg.entry_label = "_start";
-    cfg.out_path    = "a.out";
-    cfg.seg_align   = 0x1000;
-    ezld_array_init(cfg.o_files);
-    ezld_array_init(cfg.sections);
-    *ezld_array_push(cfg.sections) =
-        (ezld_sec_cfg_t){.name = ".text", .virt_addr = 0x00400000};
-    *ezld_array_push(cfg.sections) =
-        (ezld_sec_cfg_t){.name = ".data", .virt_addr = 0x10000000};
+    cfg.cfg_entrysym = "_start";
+    cfg.cfg_outpath  = "a.out";
+    cfg.cfg_segalign = 0x1000;
+    ezld_array_init(cfg.cfg_objpaths);
+    ezld_array_init(cfg.cfg_sections);
+    *ezld_array_push(cfg.cfg_sections) =
+        (ezld_sec_cfg_t){.sc_name = ".text", .sc_vaddr = 0x00400000};
+    *ezld_array_push(cfg.cfg_sections) =
+        (ezld_sec_cfg_t){.sc_name = ".data", .sc_vaddr = 0x10000000};
 
     cli_exec_t command = ezld_link;
     cli_parse(argc, argv, &cfg, &command);
 
     command(cfg);
-    ezld_array_free(cfg.o_files);
-    ezld_array_free(cfg.sections);
+
+    ezld_array_free(cfg.cfg_objpaths);
+    ezld_array_free(cfg.cfg_sections);
     return EXIT_SUCCESS;
 }
 #endif
