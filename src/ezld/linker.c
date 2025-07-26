@@ -265,7 +265,7 @@ static inline uint32_t endian32(uint32_t val) {
  * @return val but expresses in the correct endianness given the endianness of
  * ELF and that of the host machine
  */
-static inline uint64_t endian64(uint64_t val) {
+EZLD_MAYBE_FUTURE static inline uint64_t endian64(uint64_t val) {
     if (endian_should_swap()) {
         return ((val << 56) & 0xFF00000000000000ULL) |
                ((val << 40) & 0x00FF000000000000ULL) |
