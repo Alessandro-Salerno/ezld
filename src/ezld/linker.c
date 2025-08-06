@@ -312,6 +312,14 @@ EZLD_MAYBE_FUTURE static ezld_glob_str_t globstr_from_idx(size_t glob_idx) {
     return g_self->i_globstrtab.gst_strs.buf[glob_idx];
 }
 
+/**
+ * @brief Adds a string to a global string table
+ *
+ * @param str the string to be added (null-terminated)
+ * @param strtab the global string table to which the string will be added
+ *
+ * @return the index in the string table where str can be found
+ */
 static size_t strtab_add(const char *str, ezld_glob_strtab_t *strtab) {
     size_t len = strlen(str);
 
@@ -332,10 +340,24 @@ static size_t strtab_add(const char *str, ezld_glob_strtab_t *strtab) {
     return strtab->gst_strs.len - 1;
 }
 
+/**
+ * @brief Adds a string to the section header string table
+ *
+ * @param str the string to be added (null-terminated)
+ *
+ * @return the index in the string table where str can be found
+ */
 static size_t shstr_add(const char *str) {
     return strtab_add(str, &g_self->i_shstrtab);
 }
 
+/**
+ * @brief Adds a string to the global string table
+ *
+ * @param str the string to be added (null-terminated)
+ *
+ * @return the index in the string table where str can be found
+ */
 static size_t globstr_add(const char *str) {
     return strtab_add(str, &g_self->i_globstrtab);
 }
@@ -368,6 +390,12 @@ static size_t resolve_sym(Elf32_Sym      *ret,
     return EZLD_GLOB_SYM_UNDEF;
 }
 
+/**
+ * @brief Loads the contents of an object file section into the os_data field if
+ * it is not been populated yet
+ *
+ * @param sec the object file section pointer
+ */
 static void read_section_contents(ezld_obj_sec_t *sec) {
     if (NULL == sec->os_data) {
         sec->os_data = ezld_runtime_alloc(1, sec->os_shdr.sh_size);
@@ -379,6 +407,14 @@ static void read_section_contents(ezld_obj_sec_t *sec) {
     }
 }
 
+/**
+ * @brief merges an object file section with similar sections in one merged
+ * section to be written to the final output file
+ *
+ * @param objsec the object file section pointer
+ * @objsec_name index into the global string table where the name of this
+ * section is found
+ */
 static void merge_section(ezld_obj_sec_t *objsec, size_t objsec_name) {
     for (size_t i = 0; i < g_self->i_mss.len; i++) {
         ezld_mrg_sec_t *mrg = &g_self->i_mss.buf[i];
@@ -499,6 +535,15 @@ static Elf32_Phdr endian_phdr(Elf32_Phdr phdr) {
     return phdr;
 }
 
+/**
+ * @brief Reads a section header from an object file
+ *
+ * @param shndx the section header index
+ * @param randacc if true, use shndx, else read from the file normally
+ * @param obj the object file
+ *
+ * @return the section header contents
+ */
 static Elf32_Shdr read_shdr(size_t shndx, bool randacc, ezld_obj_t *obj) {
     Elf32_Shdr shdr = {0};
     size_t     shsz = obj->obj_ehdr.e_shentsize;
@@ -516,6 +561,15 @@ static Elf32_Shdr read_shdr(size_t shndx, bool randacc, ezld_obj_t *obj) {
     return endian_shdr(shdr);
 }
 
+/**
+ * @brief Reads a symbol table entry from an object file
+ *
+ * @param stndx the symbol index
+ * @param randacc if true, use stndx, else read from the file normally
+ * @param obj the object file
+ *
+ * @return the symbol table entry contents
+ */
 static Elf32_Sym read_sym(size_t stndx, bool randacc, ezld_obj_t *obj) {
     ezld_obj_sec_t *obj_symtab = obj->obj_ost.ost_os;
     Elf32_Sym       entry      = {0};
@@ -534,6 +588,12 @@ static Elf32_Sym read_sym(size_t stndx, bool randacc, ezld_obj_t *obj) {
     return endian_sym(entry);
 }
 
+/**
+ * @brief Adds all symbols from an object file symbol table to the in-memory
+ * table and adds known symbols to the global symbol table
+ *
+ * @param obj the object file
+ */
 static void merge_symtabs(ezld_obj_t *obj) {
     ezld_obj_sec_t *obj_symtab = obj->obj_ost.ost_os;
 
@@ -588,6 +648,11 @@ static void merge_symtabs(ezld_obj_t *obj) {
     }
 }
 
+/**
+ * @brief Runs the first stage of linking on a given object file
+ *
+ * @param obj the object file
+ */
 static void read_object(ezld_obj_t *obj) {
     ezld_array_init(obj->obj_oss);
     obj->obj_ost.ost_os = NULL;
@@ -682,12 +747,25 @@ static void read_object(ezld_obj_t *obj) {
     merge_symtabs(obj);
 }
 
+/**
+ * @brief Runs the first stage of linking for all object file
+ */
 static void read_objects(void) {
     for (size_t i = 0; i < g_self->i_objs.len; i++) {
         read_object(&g_self->i_objs.buf[i]);
     }
 }
 
+/**
+ * @brief Writes a segment to disk
+ *
+ * @param sec the merged section to which the segment is relative
+ * @param off the offset in the file where to place the segment's contents
+ * @param filename the name of the destination file
+ * @param file the actual file
+ *
+ * @return the number of bytes written to the file
+ */
 static size_t write_segment(ezld_mrg_sec_t *sec,
                             size_t          off,
                             const char     *filename,
@@ -708,6 +786,16 @@ static size_t write_segment(ezld_mrg_sec_t *sec,
     return written;
 }
 
+/**
+ * @brief Converts an in-memory global string table into a real ELF strtab. It
+ * writes the string table on the destination file starting from the file's
+ * current cursor position
+ *
+ * @param sec_name the name of the string table section
+ * @param strtab the global string table instance
+ *
+ * @return the section header describing the string table
+ */
 static Elf32_Shdr write_strtab(const char         *sec_name,
                                ezld_glob_strtab_t *strtab) {
     char zero = '\0';
@@ -732,6 +820,9 @@ static Elf32_Shdr write_strtab(const char         *sec_name,
     return endian_shdr(strtab_shdr);
 }
 
+/**
+ * @brief Writes the output executable to disk (without relocations)
+ */
 static void write_exec(void) {
     Elf32_Ehdr ehdr             = {0};
     ehdr.e_ident[EI_MAG0]       = ELFMAG0;
@@ -880,6 +971,10 @@ static void write_exec(void) {
     ezld_array_free(tmp_phdrs);
 }
 
+/**
+ * @brief Aligns all merged sections to the alignment specified by the
+ * configuration
+ */
 static void align_sections(void) {
     for (size_t i = 0; i < g_self->i_mss.len; i++) {
         ezld_mrg_sec_t *mrg      = &g_self->i_mss.buf[i];
@@ -943,6 +1038,11 @@ static void align_sections(void) {
     }
 }
 
+/**
+ * @brief Translates all symbol virtual addresses by adding the relative
+ * section's virtual address. This is used because object files store offsets in
+ * symbol table, whereas final executables include the real virtual address
+ */
 void virtualize_syms(void) {
     for (size_t i = 0; i < g_self->i_globsymtab.len; i++) {
         Elf32_Sym      *sym = &g_self->i_globsymtab.buf[i];
@@ -951,6 +1051,9 @@ void virtualize_syms(void) {
     }
 }
 
+/**
+ * @brief Creates initial merged sections from configuration
+ */
 static void setup_sections(void) {
     for (size_t i = 0; i < g_self->i_cfg.cfg_sections.len; i++) {
         ezld_sec_cfg_t  sec_cfg = g_self->i_cfg.cfg_sections.buf[i];
@@ -1021,6 +1124,19 @@ static void free_instance(void) {
 }
 
 // TODO: fix HUGE endianness UB here
+/**
+ * @brief Applies relocations to the final executable (after it has been written
+ * to disk)
+ *
+ * @param data original data from the section (code or data) - not relocated
+ * @param bufsz size of the data buffer
+ * @param outfile_off offset in the output file where to store the relocation
+ * @param type the type of relocation read from the ELF file
+ * @param virt_addr the virtual address of the section (used for relative
+ * values)
+ * @param addend the added of the relotion
+ * @param globsym global symbol table (in-memory)
+ */
 static void relocate(uint8_t  *data,
                      size_t    bufsz,
                      size_t    outfile_off,

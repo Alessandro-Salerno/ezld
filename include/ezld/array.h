@@ -24,16 +24,15 @@
         type  *buf;      \
         size_t len;      \
         size_t cap;      \
-        type   _dummy;   \
     }
 
 #define ezld_array_new()     {.buf = NULL, .len = 0, .cap = 0}
 #define ezld_array_init(arr) arr.buf = NULL, arr.len = 0, arr.cap = 0
 #define ezld_array_alloc(arr, size) \
-    (arr).cap = (size), (arr).buf = malloc(sizeof((arr)._dummy) * size)
-#define ezld_array_push(arr)                                                 \
-    (ezld_array_grow(                                                        \
-         (void **)&(arr).buf, &(arr).len, &(arr).cap, sizeof((arr)._dummy)), \
+    (arr).cap = (size), (arr).buf = malloc(sizeof(*(arr).buf) * size)
+#define ezld_array_push(arr)                                               \
+    (ezld_array_grow(                                                      \
+         (void **)&(arr).buf, &(arr).len, &(arr).cap, sizeof(*(arr).buf)), \
      &((arr).buf[(arr).len - 1]))
 #define ezld_array_free(arr) \
     free((arr).buf), (arr).buf = NULL, (arr).len = 0, (arr).cap = 0
