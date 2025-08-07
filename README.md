@@ -22,7 +22,7 @@
 
 ## 🚀 Usage
 
-```bash
+```
 ezld by Alessandro Salerno
 The EZ ELF Linker
 
