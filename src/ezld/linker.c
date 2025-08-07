@@ -1,19 +1,26 @@
-// ezld
-// Copyright (C) 2025 Alessandro Salerno
+// MIT License
 //
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// Copyright (c) 2025 Alessandro Salerno
 //
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
 //
-// You should have received a copy of the GNU General Public License
-// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
 
+#include <assert.h>
 #include <ezld/linker.h>
 #include <ezld/runtime.h>
 #include <musl/elf.h>
@@ -203,10 +210,8 @@ static ezld_instance_t *g_self = NULL;
  * that of the host machine, `false` otherwise
  */
 static inline bool endian_should_swap(void) {
-    return (ELFDATA2LSB == g_self->i_out.out_endian &&
-            ezld_runtime_is_big_endian()) ||
-           (ELFDATA2MSB == g_self->i_out.out_endian &&
-            !ezld_runtime_is_big_endian());
+    return (ELFDATA2LSB == g_self->i_out.out_endian && EZLD_IS_BIG_ENDIAN()) ||
+           (ELFDATA2MSB == g_self->i_out.out_endian && !EZLD_IS_BIG_ENDIAN());
 }
 
 /**
@@ -216,7 +221,7 @@ static inline bool endian_should_swap(void) {
  * @param mask the mask
  */
 static inline uint32_t mask32(uint32_t mask) {
-    if (ezld_runtime_is_big_endian()) {
+    if (EZLD_IS_BIG_ENDIAN()) {
         return ((mask << 24) & 0xFF000000) | ((mask << 8) & 0x00FF0000) |
                ((mask >> 8) & 0x0000FF00) | ((mask >> 24) & 0x000000FF);
     }
@@ -577,6 +582,7 @@ static Elf32_Sym read_sym(size_t stndx, bool randacc, ezld_obj_t *obj) {
     if (randacc) {
         (void)stndx;
         (void)obj_symtab;
+        assert(false);
         // TODO: implement this? This function should technically be able to
         // read at `strdx`, but this feature is not used in the code, and might
         // never be used
