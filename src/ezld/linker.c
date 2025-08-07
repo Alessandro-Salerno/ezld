@@ -1030,7 +1030,8 @@ static void align_sections(void) {
                                  sec_name,
                                  0);
         } else if (0 != mrg->ms_vaddr % align) {
-            size_t aligned_virt = mrg->ms_vaddr + (mrg->ms_vaddr % align);
+            size_t aligned_virt =
+                mrg->ms_vaddr + (align - (mrg->ms_vaddr % align));
             ezld_runtime_message(
                 EZLD_EMSG_WARN,
                 "section '%s' has misaligned virtual address 0x%08x (requires "
