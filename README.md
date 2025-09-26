@@ -12,11 +12,11 @@
 ---
 
 ## 🛠 Features
-- 🔹 Command-line interface for direct usage  
-- 🔹 No OS-specific libc dependency (portable across platforms)  
-- 🔹 Supports section alignment, entry point overrides, and more  
-- 🔹 Usable as a library or standalone binary  
-- 🔹 Designed with simplicity and clarity in mind
+- Command-line interface for direct usage  
+- No OS-specific libc dependency (portable across platforms)  
+- Supports section alignment, entry point overrides, and more  
+- Usable as a library or standalone binary  
+- Designed with simplicity and clarity in mind
 
 ---
 
@@ -68,11 +68,12 @@ tarman install -r ezld
 > 💡 **ezld is platform-agnostic.**
 
 Though it links **ELF binaries**, it's designed to run on any host, including:
-- 🐧 UNIX-like systems  
-- 🪟 Windows  
-- 🧪 [SalernOS](https://github.com/Alessandro-Salerno/SalernOS-Kernel)
+- 🪟 Windows
+- 🐧 Linux
+- 🍎 macOS
+- 🌈 [SalernOS](https://github.com/Alessandro-Salerno/SalernOS-Kernel)
 
-ezld avoids non-standard libc functions, improving portability and making it suitable for low-level projects, OS development, or educational purposes.
+ezld avoids non-standard libc functions, improving portability and making it suitable for low-level projects, OS userspace testing, or educational purposes.
 
 ---
 
