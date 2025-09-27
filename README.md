@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> The official ezld repository is https://github.com/Alessandro-Salerno/ezld. If you're seeing this on any other website (like github-zh.com), switch to the official repository! I have **never** uploaded this project to other source hosting services.
+
 # ⚙️ ezld — Tiny Static ELF Linker
 
 [![Contributors][contributors-shield]][contributors-url]
