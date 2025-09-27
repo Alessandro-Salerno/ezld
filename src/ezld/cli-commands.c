@@ -18,7 +18,6 @@
 #include <ezld/cli-commands.h>
 #include <ezld/linker.h>
 #include <ezld/runtime.h>
-#include <math.h>
 #include <stddef.h>
 #include <string.h>
 
@@ -27,10 +26,6 @@
 
 #ifndef EXT_EZLD_BUILD
 #define EXT_EZLD_BUILD "unknown"
-#endif
-
-#ifndef EXT_EZLD_OS
-#define EXT_EZLD_OS "unknown"
 #endif
 
 #ifndef EXT_EZLD_COMPILER
@@ -53,8 +48,13 @@
 #endif // EXT_EZLD_COMPILER
 
 static size_t parse_digit(char digit, size_t base, size_t pos) {
-    size_t mult  = pow(base, pos);
     size_t value = digit - '0';
+
+    // CREDIT: u/skeeto
+    size_t mult = 1;
+    for (size_t i = 0; i < pos; i++) {
+        mult *= base;
+    }
 
     if (!isalpha(digit)) {
         if (digit < '0' || digit > ('0' + (char)base)) {
@@ -131,8 +131,7 @@ void ezld_clicmd_version(ezld_config_t config) {
     (void)config;
 
     puts("ezld version " EXT_EZLD_BUILD);
-    puts("target: " EXT_EZLD_OS);
-    puts("compiled with: " EXT_EZLD_COMPILER);
+    puts("compiled with " EXT_EZLD_COMPILER);
 }
 
 void ezld_clicmd_entrysym(ezld_config_t *config, const char *next) {

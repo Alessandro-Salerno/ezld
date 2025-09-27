@@ -36,6 +36,8 @@
 
 #define EZLD_MAYBE_FUTURE __attribute__((used))
 
+#define EZLD_IS_SUPPORTED_ARCH(arch) (EM_RISCV == (arch))
+
 typedef struct ezld_mrg_sec ezld_mrg_sec_t;
 typedef struct ezld_obj     ezld_obj_t;
 
@@ -66,6 +68,9 @@ typedef struct ezld_obj_sec {
      * relative segment in the object file. This field is not set upon loading,
      * but rather it is set by the reader of this field if it is `NULL` */
     uint8_t *os_data;
+    /** Index into the global section header string table where the name of this
+     * object section lies */
+    size_t os_name;
 } ezld_obj_sec_t;
 
 /**
@@ -73,8 +78,8 @@ typedef struct ezld_obj_sec {
  * of different object files
  */
 typedef struct ezld_mrg_sec {
-    /** Index into the global string table where the name of this merged section
-     * lies */
+    /** Index into the global section header string table where the name of this
+     * merged section lies */
     size_t ms_name;
     /** Index into g_self.i_mss where this merged section lies */
     size_t ms_ndx;
@@ -297,6 +302,66 @@ EZLD_MAYBE_FUTURE static inline int32_t sext(uint32_t x, int bits) {
     return ((int32_t)(x << m)) >> m;
 }
 
+/**
+ * @brief tries to recognize a CPU architecture from the ELF header machine
+ * identifier
+ *
+ * @param arch the ELF header machine identifier
+ *
+ * @return a pointer to a string containing the resolved name
+ */
+const char *arch_name(uint16_t arch) {
+    switch (arch) {
+    case EM_NONE:
+        return "No specific instruction set";
+    case EM_M32:
+        return "AT&T WE 32100";
+    case EM_SPARC:
+        return "SPARC";
+    case EM_386:
+        return "Intel 80386 (x86)";
+    case EM_68K:
+        return "Motorola 68000 (M68k)";
+    case EM_88K:
+        return "Motorola 88000 (M88k)";
+    case EM_860:
+        return "Intel 80860";
+    case EM_MIPS:
+        return "MIPS I Architecture";
+    case EM_S370:
+        return "IBM System/370";
+    case EM_MIPS_RS3_LE:
+        return "MIPS RS3000 Little-endian";
+    case EM_PPC:
+        return "PowerPC";
+    case EM_PPC64:
+        return "PowerPC (64-bit)";
+    case EM_ARM:
+        return "ARM (up to ARMv7-A)";
+    case EM_ALPHA:
+        return "Digital Alpha";
+    case EM_SH:
+        return "SuperH";
+    case EM_SPARCV9:
+        return "SPARC Version 9";
+    case EM_IA_64:
+        return "Intel Itanium (IA-64)";
+    case EM_X86_64:
+        return "AMD x86-64";
+    case EM_AARCH64:
+        return "ARM 64-bit (AArch64)";
+    case EM_RISCV:
+        return "RISC-V";
+    case EM_BPF:
+        return "Berkeley Packet Filter";
+    case EM_LOONGARCH:
+        return "LoongArch";
+
+    default:
+        return "(unknown)";
+    }
+}
+
 EZLD_MAYBE_FUTURE static ezld_mrg_sec_t *find_mrg_sec(size_t name_idx) {
     for (size_t i = 0; i < g_self->i_mss.len; i++) {
         ezld_mrg_sec_t *s = &g_self->i_mss.buf[i];
@@ -417,10 +482,10 @@ static void read_section_contents(ezld_obj_sec_t *sec) {
  * section to be written to the final output file
  *
  * @param objsec the object file section pointer
- * @objsec_name index into the global string table where the name of this
- * section is found
  */
-static void merge_section(ezld_obj_sec_t *objsec, size_t objsec_name) {
+static void merge_section(ezld_obj_sec_t *objsec) {
+    size_t objsec_name = objsec->os_name;
+
     for (size_t i = 0; i < g_self->i_mss.len; i++) {
         ezld_mrg_sec_t *mrg = &g_self->i_mss.buf[i];
 
@@ -604,12 +669,11 @@ static void merge_symtabs(ezld_obj_t *obj) {
     ezld_obj_sec_t *obj_symtab = obj->obj_ost.ost_os;
 
     if (!(SHF_INFO_LINK & obj_symtab->os_shdr.sh_flags)) {
-        ezld_runtime_message(
-            EZLD_EMSG_WARN,
-            "section '%s' in '%s' is of type SHT_SYMTAB "
-            "but is missing flag SHF_LINK_INFO",
-            shstr_from_idx(obj_symtab->os_mrg->ms_name).gs_data,
-            obj->obj_filepath);
+        ezld_runtime_message(EZLD_EMSG_WARN,
+                             "section '%s' in '%s' is of type SHT_SYMTAB "
+                             "but is missing flag SHF_LINK_INFO",
+                             shstr_from_idx(obj_symtab->os_name).gs_data,
+                             obj->obj_filepath);
     }
 
     ezld_obj_sec_t *strtab_sec = &obj->obj_oss.buf[obj_symtab->os_shdr.sh_link];
@@ -680,12 +744,29 @@ static void read_object(ezld_obj_t *obj) {
             EZLD_ECODE_BADFILE, "'%s' is not a 32-bit ELF", obj->obj_filepath);
     }
 
+    uint16_t obj_arch = endian16(ehdr.e_machine);
+    if (!EZLD_IS_SUPPORTED_ARCH(obj_arch)) {
+        ezld_runtime_exit(
+            EZLD_ECODE_BADFILE,
+            "file '%s' is for unsupported machine architecture '%s'",
+            obj->obj_filepath,
+            arch_name(obj_arch));
+    }
+
     if (!g_self->i_out.out_set) {
         g_self->i_out.out_set     = true;
         g_self->i_out.out_endian  = ehdr.e_ident[EI_DATA];
         g_self->i_out.out_abi     = ehdr.e_ident[EI_OSABI];
         g_self->i_out.out_abi_ver = ehdr.e_ident[EI_ABIVERSION];
-        g_self->i_out.out_mach    = endian16(ehdr.e_machine);
+        g_self->i_out.out_mach    = obj_arch;
+    } else if (ehdr.e_ident[EI_DATA] != g_self->i_out.out_endian ||
+               ehdr.e_ident[EI_OSABI] != g_self->i_out.out_abi_ver ||
+               ehdr.e_ident[EI_ABIVERSION] != g_self->i_out.out_abi_ver ||
+               obj_arch != g_self->i_out.out_mach) {
+        ezld_runtime_exit(
+            EZLD_ECODE_BADFILE,
+            "'%s' is incompatible with one or more previsouly specified files",
+            obj->obj_filepath);
     }
 
     ehdr          = endian_ehdr(ehdr);
@@ -731,6 +812,9 @@ static void read_object(ezld_obj_t *obj) {
             objsec->os_data = (uint8_t *)shstrtab;
         }
 
+        const char *objsec_name = &shstrtab[shdr.sh_name];
+        objsec->os_name         = shstr_add(objsec_name);
+
         if (SHT_SYMTAB == shdr.sh_type) {
             if (NULL != obj->obj_ost.ost_os) {
                 ezld_runtime_message(
@@ -743,10 +827,8 @@ static void read_object(ezld_obj_t *obj) {
                 objsec->os_mrg      = NULL;
                 objsec->os_ndx      = 0;
             }
-        } else if (SHT_PROGBITS == shdr.sh_type || SHT_NOBITS == shdr.sh_type ||
-                   SHT_SYMTAB == shdr.sh_type) {
-            const char *objsec_name = &shstrtab[shdr.sh_name];
-            merge_section(objsec, shstr_add(objsec_name));
+        } else if (SHT_PROGBITS == shdr.sh_type || SHT_NOBITS == shdr.sh_type) {
+            merge_section(objsec);
         }
     }
 

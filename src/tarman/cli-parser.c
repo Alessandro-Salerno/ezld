@@ -54,7 +54,7 @@ void cli_parse(int            argc,
 
         cli_drt_desc_t opt_desc;
 
-        // If no mathcing option was found
+        // If no matching option was found
         // This argument is treated as an input file
         if (!cli_lkup_option(argument, &opt_desc)) {
             if ('-' == argument[0]) {
