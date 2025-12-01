@@ -82,7 +82,7 @@ ezld avoids non-standard libc functions, improving portability and making it sui
 
 ## 👨‍💻 Project Context
 
-ezld was created as part of the [`rarsjs`](https://github.com/ldlaur/rarsjs) project. It’s meant to be a **learning tool** and **experimentation ground** for understanding the inner workings of static linking and ELF formats.
+ezld was created as part of the [`ARES`](https://github.com/ldlaur/ares) project. It’s meant to be a **learning tool** and **experimentation ground** for understanding the inner workings of static linking and ELF formats.
 
 ---
 
