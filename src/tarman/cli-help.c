@@ -38,11 +38,11 @@ static void print_indent(void) {
 static size_t find_line_len(cli_drt_desc_t desc) {
     size_t cmd_len = BASE_LINE_LEN + COLUMN_SEPARATOR_LEN;
 
-    if (NULL != desc.short_option) {
+    if (desc.short_option != NULL) {
         cmd_len += strlen(desc.short_option);
     }
 
-    if (NULL != desc.full_option) {
+    if (desc.full_option != NULL) {
         cmd_len += strlen(desc.full_option);
     }
 
@@ -69,11 +69,11 @@ static void print_help_line(cli_drt_desc_t desc, size_t max_line_len) {
 
     print_indent();
 
-    if (NULL != desc.short_option && NULL != desc.full_option) {
+    if (desc.short_option != NULL && desc.full_option != NULL) {
         printf("%s, %s", desc.short_option, desc.full_option);
-    } else if (NULL != desc.short_option) {
+    } else if (desc.short_option != NULL) {
         printf("%s", desc.short_option);
-    } else if (NULL != desc.full_option) {
+    } else if (desc.full_option != NULL) {
         printf("%s", desc.full_option);
     }
 

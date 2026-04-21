@@ -66,10 +66,10 @@ static bool find_desc(cli_drt_desc_t  descriptors[],
     for (size_t i = 0; i < num_desc; i++) {
         cli_drt_desc_t opt_desc = descriptors[i];
 
-        if ((NULL == opt_desc.short_option ||
-             0 != strcmp(opt_desc.short_option, arg)) &&
-            (NULL == opt_desc.full_option ||
-             0 != strcmp(opt_desc.full_option, arg))) {
+        if ((opt_desc.short_option == NULL ||
+             strcmp(opt_desc.short_option, arg) != 0) &&
+            (opt_desc.full_option == NULL ||
+             strcmp(opt_desc.full_option, arg) != 0)) {
             continue;
         }
 

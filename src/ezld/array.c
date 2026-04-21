@@ -24,7 +24,7 @@
 #include <ezld/runtime.h>
 
 size_t ezld_array_grow(void **buf, size_t *len, size_t *cap, size_t elemsz) {
-    if (0 == *cap) {
+    if (*cap == 0) {
         *cap = 8;
         *buf = ezld_runtime_alloc(elemsz, *cap);
     } else if (*len == *cap) {

@@ -65,7 +65,7 @@ void ezld_runtime_read_exact(void       *buf,
                              size_t      size,
                              const char *filename,
                              FILE       *file) {
-    if (size != fread(buf, 1, size, file)) {
+    if (fread(buf, 1, size, file) != size) {
         ezld_runtime_exit(EZLD_ECODE_BADFILE,
                           "could not read %zu byte(s) from file '%s'",
                           size,
@@ -74,7 +74,7 @@ void ezld_runtime_read_exact(void       *buf,
 }
 
 void ezld_runtime_seek(size_t off, const char *filename, FILE *file) {
-    if (0 != fseek(file, off, SEEK_SET)) {
+    if (fseek(file, off, SEEK_SET) != 0) {
         ezld_runtime_exit(EZLD_ECODE_BADFILE,
                           "offset %zu exceeds size of file '%s'",
                           off,
@@ -96,7 +96,7 @@ void ezld_runtime_read_exact_at(void       *buf,
 void *ezld_runtime_alloc(size_t elemsz, size_t numelems) {
     void *buf = malloc(elemsz * numelems);
 
-    if (NULL == buf) {
+    if (buf == NULL) {
         ezld_runtime_exit(EZLD_ECODE_NOMEM, "out of memory");
     }
 
@@ -107,7 +107,7 @@ void ezld_runtime_write_exact(void       *buf,
                               size_t      size,
                               const char *filename,
                               FILE       *file) {
-    if (size != fwrite(buf, 1, size, file)) {
+    if (fwrite(buf, 1, size, file) != size) {
         ezld_runtime_exit(EZLD_ECODE_BADFILE,
                           "could not write %zu byte(s) to file '%s'",
                           size,
@@ -127,7 +127,7 @@ void ezld_runtime_write_exact_at(void       *buf,
 }
 
 void ezld_runtime_seek_end(const char *filename, FILE *file) {
-    if (0 != fseek(file, 0, SEEK_END)) {
+    if (fseek(file, 0, SEEK_END) != 0) {
         ezld_runtime_exit(
             EZLD_ECODE_BADFILE, "unable to find end of '%s'", filename);
     }
@@ -136,7 +136,7 @@ void ezld_runtime_seek_end(const char *filename, FILE *file) {
 void *ezld_runtime_realloc(void *buf, size_t size) {
     void *new_buf = realloc(buf, size);
 
-    if (NULL == new_buf) {
+    if (new_buf == NULL) {
         ezld_runtime_exit(EZLD_ECODE_NOMEM, "out of memory");
     }
 

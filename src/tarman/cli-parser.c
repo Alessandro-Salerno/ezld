@@ -27,7 +27,7 @@ void cli_parse(int            argc,
                const char    *argv[],
                ezld_config_t *cli_info,
                cli_exec_t    *handler) {
-    if (2 > argc) {
+    if (argc < 3) {
         cli_drt_desc_t d;
         cli_lkup_command("--help", &d);
         *handler = d.exec_handler;
@@ -48,7 +48,7 @@ void cli_parse(int            argc,
     for (int i = base; i < argc; i++) {
         const char *argument = argv[i];
         const char *next     = NULL;
-        if (argc - 1 != i) {
+        if (i != argc - 1) {
             next = argv[i + 1];
         }
 
@@ -57,7 +57,7 @@ void cli_parse(int            argc,
         // If no matching option was found
         // This argument is treated as an input file
         if (!cli_lkup_option(argument, &opt_desc)) {
-            if ('-' == argument[0]) {
+            if (argument[0] == '-') {
                 ezld_runtime_exit(
                     EZLD_ECODE_BADPARAM,
                     "unrecognized option '%s'. Try '%s help' for help",
@@ -72,7 +72,7 @@ void cli_parse(int            argc,
         // Skip next CLI argument if the option required an arguments
         // of its own
         if (opt_desc.has_argument) {
-            if (NULL == next) {
+            if (next == NULL) {
                 ezld_runtime_exit(EZLD_ECODE_BADPARAM,
                                   "option '%s' requires exactly one argument",
                                   argv[i]);
@@ -81,7 +81,7 @@ void cli_parse(int            argc,
         }
 
         // Apply options
-        if (NULL != opt_desc.handler) {
+        if (opt_desc.handler != NULL) {
             opt_desc.handler(cli_info, next);
         }
     }

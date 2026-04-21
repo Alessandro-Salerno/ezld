@@ -87,7 +87,7 @@ static size_t parse_number(const char *str) {
     size_t start = 0;
     size_t value = 0;
 
-    if ('0' == str[0]) {
+    if (str[0] == '0') {
         start = 2;
         switch (tolower(str[1])) {
         case 'x':
@@ -106,7 +106,7 @@ static size_t parse_number(const char *str) {
         return 0;
     }
 
-    for (size_t i = len - 1; start <= i; i--) {
+    for (size_t i = len - 1; i > start; i--) {
         size_t pos = len - i - 1;
         value += parse_digit(str[i], base, pos);
     }
@@ -116,7 +116,7 @@ static size_t parse_number(const char *str) {
 
 static void parse_assignment(const char *str, char **key, char **value) {
     for (size_t i = 0; str[i]; i++) {
-        if ('=' == str[i]) {
+        if (str[i] == '=') {
             *(char *)&str[i] = '\0';
             *key             = (char *)str;
             *value           = (char *)&str[i + 1];
@@ -143,7 +143,7 @@ void ezld_clicmd_section(ezld_config_t *config, const char *next) {
     parse_assignment(next, &key, &value);
 
     for (size_t i = 0; i < config->cfg_sections.len; i++) {
-        if (0 == strcmp(config->cfg_sections.buf[i].sc_name, key)) {
+        if (strcmp(config->cfg_sections.buf[i].sc_name, key) == 0) {
             config->cfg_sections.buf[i].sc_vaddr = parse_number(value);
             return;
         }

@@ -36,7 +36,7 @@
 
 #define EZLD_MAYBE_FUTURE __attribute__((used))
 
-#define EZLD_IS_SUPPORTED_ARCH(arch) (EM_RISCV == (arch))
+#define EZLD_IS_SUPPORTED_ARCH(arch) ((arch) == EM_RISCV)
 
 typedef struct ezld_mrg_sec ezld_mrg_sec_t;
 typedef struct ezld_obj     ezld_obj_t;
@@ -215,8 +215,8 @@ static ezld_instance_t *g_self = NULL;
  * that of the host machine, `false` otherwise
  */
 static inline bool endian_should_swap(void) {
-    return (ELFDATA2LSB == g_self->i_out.out_endian && EZLD_IS_BIG_ENDIAN()) ||
-           (ELFDATA2MSB == g_self->i_out.out_endian && !EZLD_IS_BIG_ENDIAN());
+    return (g_self->i_out.out_endian == ELFDATA2LSB && EZLD_IS_BIG_ENDIAN()) ||
+           (g_self->i_out.out_endian == ELFDATA2MSB && !EZLD_IS_BIG_ENDIAN());
 }
 
 /**
@@ -396,7 +396,7 @@ static size_t strtab_add(const char *str, ezld_glob_strtab_t *strtab) {
     for (size_t i = 0; i < strtab->gst_strs.len; i++) {
         ezld_glob_str_t s = strtab->gst_strs.buf[i];
 
-        if (len == s.gs_len && 0 == strcmp(str, s.gs_data)) {
+        if (len == s.gs_len && strcmp(str, s.gs_data) == 0) {
             return i;
         }
     }
@@ -436,12 +436,12 @@ static size_t resolve_sym(Elf32_Sym      *ret,
                           ezld_obj_sym_t *objsym,
                           size_t          glob_stridx,
                           bool            use_sym_name) {
-    if (NULL != objsym && EZLD_GLOB_SYM_UNDEF != objsym->osy_globndx) {
+    if (objsym != NULL && objsym->osy_globndx != EZLD_GLOB_SYM_UNDEF) {
         *ret = g_self->i_globsymtab.buf[objsym->osy_globndx - 1];
         return objsym->osy_globndx;
     }
 
-    if (use_sym_name && NULL != objsym && NULL != objsym->osy_name) {
+    if (use_sym_name && objsym != NULL && objsym->osy_name != NULL) {
         glob_stridx = globstr_add(objsym->osy_name);
     }
 
@@ -449,7 +449,7 @@ static size_t resolve_sym(Elf32_Sym      *ret,
         Elf32_Sym s = g_self->i_globsymtab.buf[i];
 
         if (s.st_name == glob_stridx) {
-            if (NULL != objsym) {
+            if (objsym != NULL) {
                 objsym->osy_globndx = i + 1;
             }
             *ret = s;
@@ -467,7 +467,7 @@ static size_t resolve_sym(Elf32_Sym      *ret,
  * @param sec the object file section pointer
  */
 static void read_section_contents(ezld_obj_sec_t *sec) {
-    if (NULL == sec->os_data) {
+    if (sec->os_data == NULL) {
         sec->os_data = ezld_runtime_alloc(1, sec->os_shdr.sh_size);
         ezld_runtime_read_exact_at(sec->os_data,
                                    sec->os_shdr.sh_size,
@@ -668,7 +668,7 @@ static Elf32_Sym read_sym(size_t stndx, bool randacc, ezld_obj_t *obj) {
 static void merge_symtabs(ezld_obj_t *obj) {
     ezld_obj_sec_t *obj_symtab = obj->obj_ost.ost_os;
 
-    if (!(SHF_INFO_LINK & obj_symtab->os_shdr.sh_flags)) {
+    if (!(obj_symtab->os_shdr.sh_flags & SHF_INFO_LINK)) {
         ezld_runtime_message(EZLD_EMSG_WARN,
                              "section '%s' in '%s' is of type SHT_SYMTAB "
                              "but is missing flag SHF_LINK_INFO",
@@ -692,7 +692,7 @@ static void merge_symtabs(ezld_obj_t *obj) {
         obj_sym->osy_esym       = entry;
         obj_sym->osy_name       = (char *)&strtab_sec->os_data[entry.st_name];
 
-        if (SHN_UNDEF == entry.st_shndx) {
+        if (entry.st_shndx == SHN_UNDEF) {
             obj_sym->osy_globndx = 0;
             continue;
         }
@@ -712,7 +712,7 @@ static void merge_symtabs(ezld_obj_t *obj) {
         // This starts at 1 to use 0 as NULL
         obj_sym->osy_globndx = g_self->i_globsymtab.len;
 
-        if (NULL == g_self->i_osentry && EZLD_ENTRY_NAME == glob_sym->st_name) {
+        if (g_self->i_osentry == NULL && glob_sym->st_name == EZLD_ENTRY_NAME) {
             g_self->i_osentry = obj_sym;
         }
     }
@@ -733,13 +733,13 @@ static void read_object(ezld_obj_t *obj) {
         &ehdr, sizeof(Elf32_Ehdr), obj->obj_filepath, obj->obj_file);
     obj->obj_ehdr = ehdr;
 
-    if (ELFMAG0 != ehdr.e_ident[EI_MAG0] || ELFMAG1 != ehdr.e_ident[EI_MAG1] ||
-        ELFMAG2 != ehdr.e_ident[EI_MAG2] || ELFMAG3 != ehdr.e_ident[EI_MAG3]) {
+    if (ehdr.e_ident[EI_MAG0] != ELFMAG0 || ehdr.e_ident[EI_MAG1] != ELFMAG1 ||
+        ehdr.e_ident[EI_MAG2] != ELFMAG2 || ehdr.e_ident[EI_MAG3] != ELFMAG3) {
         ezld_runtime_exit(
             EZLD_ECODE_BADFILE, "'%s' is not an ELF file", obj->obj_filepath);
     }
 
-    if (ELFCLASS32 != ehdr.e_ident[EI_CLASS]) {
+    if (ehdr.e_ident[EI_CLASS] != ELFCLASS32) {
         ezld_runtime_exit(
             EZLD_ECODE_BADFILE, "'%s' is not a 32-bit ELF", obj->obj_filepath);
     }
@@ -772,7 +772,7 @@ static void read_object(ezld_obj_t *obj) {
     ehdr          = endian_ehdr(ehdr);
     obj->obj_ehdr = ehdr;
 
-    if (ET_REL != ehdr.e_type) {
+    if (ehdr.e_type != ET_REL) {
         ezld_runtime_exit(EZLD_ECODE_BADFILE,
                           "'%s' is not a relocatable object file",
                           obj->obj_filepath);
@@ -780,7 +780,7 @@ static void read_object(ezld_obj_t *obj) {
 
     Elf32_Shdr shstrtab_sh = read_shdr(ehdr.e_shstrndx, true, obj);
 
-    if (SHT_STRTAB != shstrtab_sh.sh_type) {
+    if (shstrtab_sh.sh_type != SHT_STRTAB) {
         ezld_runtime_message(
             EZLD_EMSG_WARN,
             "section header string section in '%s' is not of type SHT_STRTAB",
@@ -804,19 +804,19 @@ static void read_object(ezld_obj_t *obj) {
         objsec->os_elems       = shdr.sh_size;
         objsec->os_data        = NULL;
 
-        if (0 != shdr.sh_entsize) {
+        if (shdr.sh_entsize != 0) {
             objsec->os_elems /= shdr.sh_entsize;
         }
 
-        if (ehdr.e_shstrndx == i) {
+        if (i == ehdr.e_shstrndx) {
             objsec->os_data = (uint8_t *)shstrtab;
         }
 
         const char *objsec_name = &shstrtab[shdr.sh_name];
         objsec->os_name         = shstr_add(objsec_name);
 
-        if (SHT_SYMTAB == shdr.sh_type) {
-            if (NULL != obj->obj_ost.ost_os) {
+        if (shdr.sh_type == SHT_SYMTAB) {
+            if (obj->obj_ost.ost_os != NULL) {
                 ezld_runtime_message(
                     EZLD_EMSG_WARN,
                     "object file '%s' has more than one "
@@ -827,7 +827,7 @@ static void read_object(ezld_obj_t *obj) {
                 objsec->os_mrg      = NULL;
                 objsec->os_ndx      = 0;
             }
-        } else if (SHT_PROGBITS == shdr.sh_type || SHT_NOBITS == shdr.sh_type) {
+        } else if (shdr.sh_type == SHT_PROGBITS || shdr.sh_type == SHT_NOBITS) {
             merge_section(objsec);
         }
     }
@@ -858,7 +858,7 @@ static size_t write_segment(ezld_mrg_sec_t *sec,
                             size_t          off,
                             const char     *filename,
                             FILE           *file) {
-    if (SHT_NOBITS == ezld_array_first(sec->ms_oss)->os_shdr.sh_type) {
+    if (ezld_array_first(sec->ms_oss)->os_shdr.sh_type == SHT_NOBITS) {
         return 0;
     }
 
@@ -928,8 +928,8 @@ static void write_exec(void) {
     ehdr.e_version = EV_CURRENT;
     ehdr.e_ehsize  = sizeof(Elf32_Ehdr);
 
-    if (NULL == g_self->i_osentry ||
-        EZLD_GLOB_SYM_UNDEF == g_self->i_osentry->osy_globndx) {
+    if (g_self->i_osentry == NULL ||
+        g_self->i_osentry->osy_globndx == EZLD_GLOB_SYM_UNDEF) {
         ezld_runtime_message(EZLD_EMSG_WARN,
                              "could not resolve entry point symbol '%s', "
                              "defaulting to base of '.text' section",
@@ -959,7 +959,7 @@ static void write_exec(void) {
         ezld_mrg_sec_t *mrg = &g_self->i_mss.buf[i];
 
         if (!ezld_array_is_empty(mrg->ms_oss) &&
-            (SHF_ALLOC & ezld_array_first(mrg->ms_oss)->os_shdr.sh_flags)) {
+            (ezld_array_first(mrg->ms_oss)->os_shdr.sh_flags & SHF_ALLOC)) {
             Elf32_Shdr base = ezld_array_first(mrg->ms_oss)->os_shdr;
             ehdr.e_phnum++;
             Elf32_Phdr phdr = {0};
@@ -971,15 +971,15 @@ static void write_exec(void) {
             phdr.p_flags    = PF_R;
             size_t sh_flags = ezld_array_first(mrg->ms_oss)->os_shdr.sh_flags;
 
-            if (SHT_NOBITS != base.sh_type) {
+            if (base.sh_type != SHT_NOBITS) {
                 phdr.p_filesz = mrg->ms_memsz;
             }
 
-            if (SHF_WRITE & sh_flags) {
+            if (sh_flags & SHF_WRITE) {
                 phdr.p_flags |= PF_W;
             }
 
-            if (SHF_EXECINSTR & sh_flags) {
+            if (sh_flags & SHF_EXECINSTR) {
                 phdr.p_flags = PF_X;
             }
 
@@ -1078,13 +1078,13 @@ static void align_sections(void) {
         size_t sh_align  = ezld_array_first(mrg->ms_oss)->os_shdr.sh_addralign;
         size_t seg_align = g_self->i_cfg.cfg_segalign;
         size_t align     = sh_align;
-        if (SHF_ALLOC & ezld_array_first(mrg->ms_oss)->os_shdr.sh_flags &&
+        if (ezld_array_first(mrg->ms_oss)->os_shdr.sh_flags & SHF_ALLOC &&
             seg_align > sh_align) {
             align = seg_align;
         }
         mrg->ms_memsz = mrg->ms_memsz + (align - (mrg->ms_memsz % align));
 
-        if (!(SHF_ALLOC & ezld_array_first(mrg->ms_oss)->os_shdr.sh_flags)) {
+        if (!(ezld_array_first(mrg->ms_oss)->os_shdr.sh_flags & SHF_ALLOC)) {
             continue;
         }
 
@@ -1106,12 +1106,12 @@ static void align_sections(void) {
             }
         }
 
-        if (0 == mrg->ms_vaddr) {
+        if (mrg->ms_vaddr == 0) {
             ezld_runtime_message(EZLD_EMSG_WARN,
                                  "section '%s' has virtual address 0x%08x",
                                  sec_name,
                                  0);
-        } else if (0 != mrg->ms_vaddr % align) {
+        } else if (mrg->ms_vaddr % align != 0) {
             size_t aligned_virt =
                 mrg->ms_vaddr + (align - (mrg->ms_vaddr % align));
             ezld_runtime_message(
@@ -1159,7 +1159,7 @@ static void setup_sections(void) {
 static void open_output(void) {
     FILE *out = fopen(g_self->i_cfg.cfg_outpath, "wb");
 
-    if (NULL == out) {
+    if (out == NULL) {
         ezld_runtime_exit(EZLD_ECODE_NOFILE,
                           "could not open output file '%s'",
                           g_self->i_cfg.cfg_outpath);
@@ -1173,7 +1173,7 @@ static void open_objects(void) {
         const char *obj_path = g_self->i_cfg.cfg_objpaths.buf[i];
         FILE       *file     = fopen(obj_path, "rb");
 
-        if (NULL == file) {
+        if (file == NULL) {
             ezld_runtime_exit(
                 EZLD_ECODE_NOFILE, "could not open input file '%s'", obj_path);
         }
@@ -1351,7 +1351,7 @@ static void rela_section(ezld_obj_sec_t *objsec) {
         ezld_obj_sym_t *sym = &objsec->os_obj->obj_ost.ost_syms.buf[sym_idx];
         Elf32_Sym       glob_sym;
 
-        if (EZLD_GLOB_SYM_UNDEF == resolve_sym(&glob_sym, sym, 0, true)) {
+        if (resolve_sym(&glob_sym, sym, 0, true) == EZLD_GLOB_SYM_UNDEF) {
             ezld_runtime_message(
                 EZLD_EMSG_ERR,
                 "in %s:%s+0x%x (%s:%s+0x%lx): undefined reference to '%s'",
@@ -1383,7 +1383,7 @@ static void apply_relocations(void) {
             ezld_obj_sec_t *objsec = &obj->obj_oss.buf[j];
 
             // TODO: support REL as well
-            if (SHT_RELA == objsec->os_shdr.sh_type) {
+            if (objsec->os_shdr.sh_type == SHT_RELA) {
                 read_section_contents(objsec);
                 rela_section(objsec);
             }
