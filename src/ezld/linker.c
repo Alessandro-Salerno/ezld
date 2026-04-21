@@ -1340,8 +1340,6 @@ static void rela_section(ezld_obj_sec_t *objsec) {
     size_t num_entries = objsec->os_shdr.sh_size / objsec->os_shdr.sh_entsize;
     Elf32_Rela *relas  = (Elf32_Rela *)objsec->os_data;
 
-    // TODO: do this just like symbols: read from file
-    // instead of loading everything into memory
     // TODO: fix endianness here too
     for (size_t i = 0; i < num_entries; i++) {
         Elf32_Rela      entry   = relas[i];

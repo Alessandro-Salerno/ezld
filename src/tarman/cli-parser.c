@@ -27,7 +27,7 @@ void cli_parse(int            argc,
                const char    *argv[],
                ezld_config_t *cli_info,
                cli_exec_t    *handler) {
-    if (argc < 3) {
+    if (argc < 2) {
         cli_drt_desc_t d;
         cli_lkup_command("--help", &d);
         *handler = d.exec_handler;
