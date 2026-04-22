@@ -1342,8 +1342,12 @@ static void rela_section(ezld_obj_sec_t *objsec) {
 
     // TODO: fix endianness here too
     for (size_t i = 0; i < num_entries; i++) {
-        Elf32_Rela      entry   = relas[i];
-        size_t          off     = entry.r_offset + target->os_mrg->ms_fileoff;
+        Elf32_Rela entry = relas[i];
+        // off = start of merged section in executable + offset inside merged
+        // section where the original object section starts + offset into the
+        // object section where the relocation needs to be applied
+        size_t off =
+            target->os_mrg->ms_fileoff + target->os_transl + entry.r_offset;
         size_t          sym_idx = ELF32_R_SYM(entry.r_info);
         size_t          type    = ELF32_R_TYPE(entry.r_info);
         ezld_obj_sym_t *sym = &objsec->os_obj->obj_ost.ost_syms.buf[sym_idx];
