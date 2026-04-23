@@ -303,6 +303,30 @@ EZLD_MAYBE_FUTURE static inline int32_t sext(uint32_t x, int bits) {
 }
 
 /**
+ * @brief calculate the maximum of two Elf32_Addr values
+ *
+ * @param a the first value
+ * @param b the second value
+ *
+ * @return max(a, b)
+ */
+static inline Elf32_Addr maxaddr32(Elf32_Addr a, Elf32_Addr b) {
+    return (a > b) ? a : b;
+}
+
+/**
+ * @brief calculate the maximum of two Elf32_Word values
+ *
+ * @param a the first value
+ * @param b the second value
+ *
+ * @return max(a, b)
+ */
+static inline Elf32_Word maxword32(Elf32_Word a, Elf32_Word b) {
+    return (a > b) ? a : b;
+}
+
+/**
  * @brief tries to recognize a CPU architecture from the ELF header machine
  * identifier
  *
@@ -668,12 +692,19 @@ static Elf32_Sym read_sym(size_t stndx, bool randacc, ezld_obj_t *obj) {
 static void merge_symtabs(ezld_obj_t *obj) {
     ezld_obj_sec_t *obj_symtab = obj->obj_ost.ost_os;
 
-    if (!(obj_symtab->os_shdr.sh_flags & SHF_INFO_LINK)) {
-        ezld_runtime_message(EZLD_EMSG_WARN,
-                             "section '%s' in '%s' is of type SHT_SYMTAB "
-                             "but is missing flag SHF_LINK_INFO",
-                             shstr_from_idx(obj_symtab->os_name).gs_data,
-                             obj->obj_filepath);
+    if (obj_symtab->os_shdr.sh_link >= obj->obj_oss.len) {
+        ezld_runtime_exit(EZLD_ECODE_BADSEC,
+                          "symbol table for '%s' references "
+                          "invalid string table number 0x%x",
+                          obj->obj_filepath,
+                          obj_symtab->os_shdr.sh_link);
+    }
+
+    if (obj_symtab->os_shdr.sh_entsize != sizeof(Elf32_Sym)) {
+        ezld_runtime_exit(EZLD_ECODE_BADSEC,
+                          "symbol table for '%s' has invalid entry size %zu",
+                          obj->obj_filepath,
+                          obj_symtab->os_shdr.sh_entsize);
     }
 
     ezld_obj_sec_t *strtab_sec = &obj->obj_oss.buf[obj_symtab->os_shdr.sh_link];
@@ -688,31 +719,117 @@ static void merge_symtabs(ezld_obj_t *obj) {
     for (size_t i = 0; i < num_entires; i++) {
         Elf32_Sym entry = read_sym(i, false, obj);
 
+        if (entry.st_name >= strtab_sec->os_elems) {
+            ezld_runtime_exit(
+                EZLD_ECODE_BADSEC,
+                "symbol table in '%s' references invalid name index %zu",
+                obj->obj_filepath,
+                entry.st_name);
+        }
+
         ezld_obj_sym_t *obj_sym = ezld_array_push(obj->obj_ost.ost_syms);
         obj_sym->osy_esym       = entry;
         obj_sym->osy_name       = (char *)&strtab_sec->os_data[entry.st_name];
 
-        if (entry.st_shndx == SHN_UNDEF) {
-            obj_sym->osy_globndx = 0;
+        if (entry.st_shndx >= obj->obj_oss.len &&
+            entry.st_shndx < SHN_LORESERVE) {
+            ezld_runtime_exit(EZLD_ECODE_BADSEC,
+                              "symbol '%s' in symbol table for '%s' references "
+                              "invalid section number 0x%x",
+                              obj_sym->osy_name,
+                              obj->obj_filepath,
+                              entry.st_shndx);
+        }
+
+        // We defer resolution of these: code accessing object file symbol
+        // tables after all symtabs have been merged shall check the global
+        // index against EZLD_GLOB_SYM_UNDEF, perform a name-based lookup, and
+        // update the global index field. We can distinguish between SHN_UNDEF
+        // and STB_LOCAL later: first check osy_globndx, then check binding
+        // NOTE: we do this because more SHN_UNDEF references could follow and
+        // resolving this here would make the code messy
+        if (entry.st_shndx == SHN_UNDEF ||
+            ELF32_ST_BIND(entry.st_info) == STB_LOCAL) {
+            obj_sym->osy_globndx = EZLD_GLOB_SYM_UNDEF;
             continue;
         }
 
-        ezld_obj_sec_t *sym_sec =
-            &obj_symtab->os_obj->obj_oss.buf[entry.st_shndx];
-        uint32_t glob_shidx   = sym_sec->os_mrg->ms_ndx;
-        uint32_t glob_sym_off = entry.st_value + sym_sec->os_transl;
+        size_t     glob_strndx = globstr_add(obj_sym->osy_name);
+        size_t     glob_symndx = resolve_sym(NULL, NULL, glob_strndx, true);
+        Elf32_Sym *glob_sym    = NULL;
 
-        Elf32_Sym *glob_sym = ezld_array_push(g_self->i_globsymtab);
-        glob_sym->st_shndx  = glob_shidx;
-        glob_sym->st_value  = glob_sym_off;
-        glob_sym->st_name   = globstr_add(obj_sym->osy_name);
-        glob_sym->st_size   = entry.st_size;
-        glob_sym->st_info   = entry.st_info;
+        uint32_t glob_shidx   = SHN_COMMON;
+        uint32_t glob_sym_off = entry.st_value;
 
-        // This starts at 1 to use 0 as NULL
-        obj_sym->osy_globndx = g_self->i_globsymtab.len;
+        if (glob_symndx != EZLD_GLOB_SYM_UNDEF) {
+            glob_sym = &g_self->i_globsymtab.buf[glob_symndx - 1];
 
-        if (g_self->i_osentry == NULL && glob_sym->st_name == EZLD_ENTRY_NAME) {
+            if (entry.st_shndx == SHN_COMMON) {
+                obj_sym->osy_globndx = glob_symndx;
+                // Global COMMON symbol shall have size and alignemtn (st_value)
+                // equal to the largest declared in the various object files
+                if (glob_sym->st_shndx == SHN_COMMON) {
+                    glob_sym->st_size =
+                        maxword32(glob_sym->st_size, entry.st_size);
+                    glob_sym->st_value =
+                        maxaddr32(glob_sym->st_value, entry.st_value);
+                }
+                // We don't add the same COMMON entry again
+                continue;
+            }
+
+            if (ELF32_ST_BIND(entry.st_info) == STB_WEAK) {
+                continue;
+            }
+
+            if (entry.st_shndx < SHN_LORESERVE &&
+                glob_sym->st_shndx != SHN_COMMON &&
+                ELF32_ST_BIND(glob_sym->st_info) == STB_GLOBAL) {
+                ezld_runtime_exit(EZLD_ECODE_BADSYM,
+                                  "multiple definitions of symbol '%s'",
+                                  obj_sym->osy_name);
+            }
+
+            // If the current symbol entry is not marked with SHN_COMMON and it
+            // is not a redefinition, we treat this as an authoritative
+            // definition valid for all previous and future COMMON symbols with
+            // this name
+            ezld_obj_sec_t *sym_sec =
+                &obj_symtab->os_obj->obj_oss.buf[entry.st_shndx];
+            glob_shidx   = sym_sec->os_mrg->ms_ndx;
+            glob_sym_off = entry.st_value + sym_sec->os_transl;
+        } else if (entry.st_shndx < SHN_LORESERVE) {
+            // Brand new regular symbol
+            ezld_obj_sec_t *sym_sec =
+                &obj_symtab->os_obj->obj_oss.buf[entry.st_shndx];
+            glob_sym     = ezld_array_push(g_self->i_globsymtab);
+            glob_shidx   = sym_sec->os_mrg->ms_ndx;
+            glob_sym_off = entry.st_value + sym_sec->os_transl;
+            // This starts at 1 to use 0 as NULL
+            glob_symndx = g_self->i_globsymtab.len;
+        } else if (entry.st_shndx == SHN_COMMON) {
+            // Fist time encountering this COMMON symbol: we add it to the table
+            glob_sym    = ezld_array_push(g_self->i_globsymtab);
+            glob_symndx = g_self->i_globsymtab.len;
+        }
+
+        // NOTE: here we know the current symbol is the strongest it can be:
+        // STB_LOCAL is never added and STB_WEAK will already have been filtered
+        // out if there was an existing definition. Same goes for SHN_UNDEF and
+        // SHN_COMMON.
+        glob_sym->st_shndx = glob_shidx;
+        glob_sym->st_value = glob_sym_off;
+        glob_sym->st_name  = glob_strndx;
+        glob_sym->st_size  = entry.st_size;
+        glob_sym->st_info  = entry.st_info;
+
+        obj_sym->osy_globndx = glob_symndx;
+
+        // We can compare indices directly because duplicate strings get
+        // collapsed by globstr_add so if the index matches, the contents will
+        // match too
+        if (g_self->i_osentry == NULL && glob_sym->st_name == EZLD_ENTRY_NAME &&
+            ELF32_ST_BIND(entry.st_info) == STB_GLOBAL) {
             g_self->i_osentry = obj_sym;
         }
     }
