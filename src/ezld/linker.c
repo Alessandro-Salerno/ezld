@@ -460,12 +460,18 @@ static size_t resolve_sym(Elf32_Sym      *ret,
                           ezld_obj_sym_t *objsym,
                           size_t          glob_stridx,
                           bool            use_sym_name) {
+    Elf32_Sym dummy;
+    if (ret == NULL) {
+        ret = &dummy;
+    }
+
     if (objsym != NULL && objsym->osy_globndx != EZLD_GLOB_SYM_UNDEF) {
         *ret = g_self->i_globsymtab.buf[objsym->osy_globndx - 1];
         return objsym->osy_globndx;
     }
 
-    if (use_sym_name && objsym != NULL && objsym->osy_name != NULL) {
+    if (use_sym_name && objsym != NULL) {
+        assert(objsym->osy_name != NULL);
         glob_stridx = globstr_add(objsym->osy_name);
     }
 
@@ -755,7 +761,7 @@ static void merge_symtabs(ezld_obj_t *obj) {
         }
 
         size_t     glob_strndx = globstr_add(obj_sym->osy_name);
-        size_t     glob_symndx = resolve_sym(NULL, NULL, glob_strndx, true);
+        size_t     glob_symndx = resolve_sym(NULL, obj_sym, glob_strndx, false);
         Elf32_Sym *glob_sym    = NULL;
 
         uint32_t glob_shidx   = SHN_COMMON;
@@ -765,7 +771,6 @@ static void merge_symtabs(ezld_obj_t *obj) {
             glob_sym = &g_self->i_globsymtab.buf[glob_symndx - 1];
 
             if (entry.st_shndx == SHN_COMMON) {
-                obj_sym->osy_globndx = glob_symndx;
                 // Global COMMON symbol shall have size and alignemtn (st_value)
                 // equal to the largest declared in the various object files
                 if (glob_sym->st_shndx == SHN_COMMON) {
