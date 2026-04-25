@@ -490,61 +490,63 @@ static void read_section_contents(ezld_obj_sec_t *sec) {
  * @param objsec the object file section pointer
  */
 static void merge_section(ezld_obj_sec_t *objsec) {
-    size_t objsec_name = objsec->os_name;
+    size_t      objsec_name     = objsec->os_name;
+    const char *objsec_name_str = shstr_from_idx(objsec_name).gs_data;
 
     for (size_t i = 0; i < g_self->i_mss.len; i++) {
         ezld_mrg_sec_t *mrg = &g_self->i_mss.buf[i];
 
-        if (mrg->ms_name == objsec_name) {
-            size_t next_idx = mrg->ms_oss.len;
+        if (mrg->ms_name != objsec_name) {
+            continue;
+        }
 
-            if (ezld_array_is_empty(mrg->ms_oss)) {
-                *ezld_array_push(mrg->ms_oss) = objsec;
-                objsec->os_ndx                = next_idx;
-                objsec->os_mrg                = mrg;
-                objsec->os_transl             = 0;
-                mrg->ms_memsz                 = objsec->os_shdr.sh_size;
-                return;
-            }
+        size_t next_idx = mrg->ms_oss.len;
 
-            ezld_obj_sec_t *last = ezld_array_last(mrg->ms_oss);
-
-            if (objsec->os_shdr.sh_type != last->os_shdr.sh_type) {
-                ezld_runtime_exit(EZLD_ECODE_BADSEC,
-                                  "section '%s' in '%s' has conflicting type "
-                                  "with '%s' sections in other files",
-                                  objsec_name,
-                                  objsec->os_obj->obj_filepath,
-                                  objsec_name);
-            }
-
-            if (objsec->os_shdr.sh_flags != last->os_shdr.sh_flags) {
-                ezld_runtime_exit(EZLD_ECODE_BADSEC,
-                                  "section '%s' in '%s' has conflicting flags "
-                                  "with '%s' sections in other files",
-                                  objsec_name,
-                                  objsec->os_obj->obj_filepath,
-                                  objsec_name);
-            }
-
-            if (objsec->os_shdr.sh_addralign != last->os_shdr.sh_addralign) {
-                ezld_runtime_exit(
-                    EZLD_ECODE_BADSEC,
-                    "section '%s' in '%s' has conflicting alignment "
-                    "with '%s' sections in other files",
-                    shstr_from_idx(objsec_name).gs_data,
-                    objsec->os_obj->obj_filepath,
-                    shstr_from_idx(objsec_name).gs_data);
-            }
-
-            size_t transl_off = last->os_transl + last->os_shdr.sh_size;
+        if (ezld_array_is_empty(mrg->ms_oss)) {
             *ezld_array_push(mrg->ms_oss) = objsec;
             objsec->os_ndx                = next_idx;
             objsec->os_mrg                = mrg;
-            objsec->os_transl             = transl_off;
-            mrg->ms_memsz += objsec->os_shdr.sh_size;
+            objsec->os_transl             = 0;
+            mrg->ms_memsz                 = objsec->os_shdr.sh_size;
             return;
         }
+
+        ezld_obj_sec_t *last = ezld_array_last(mrg->ms_oss);
+
+        if (objsec->os_shdr.sh_type != last->os_shdr.sh_type) {
+            ezld_runtime_exit(EZLD_ECODE_BADSEC,
+                              "section '%s' in '%s' has conflicting type "
+                              "with '%s' sections in other files",
+                              objsec_name_str,
+                              objsec->os_obj->obj_filepath,
+                              objsec_name_str);
+        }
+
+        if (objsec->os_shdr.sh_flags != last->os_shdr.sh_flags) {
+            ezld_runtime_exit(EZLD_ECODE_BADSEC,
+                              "section '%s' in '%s' has conflicting flags "
+                              "with '%s' sections in other files",
+                              objsec_name_str,
+                              objsec->os_obj->obj_filepath,
+                              objsec_name_str);
+        }
+
+        if (objsec->os_shdr.sh_addralign != last->os_shdr.sh_addralign) {
+            ezld_runtime_exit(EZLD_ECODE_BADSEC,
+                              "section '%s' in '%s' has conflicting alignment "
+                              "with '%s' sections in other files",
+                              objsec_name_str,
+                              objsec->os_obj->obj_filepath,
+                              objsec_name_str);
+        }
+
+        size_t transl_off             = last->os_transl + last->os_shdr.sh_size;
+        *ezld_array_push(mrg->ms_oss) = objsec;
+        objsec->os_ndx                = next_idx;
+        objsec->os_mrg                = mrg;
+        objsec->os_transl             = transl_off;
+        mrg->ms_memsz += objsec->os_shdr.sh_size;
+        return;
     }
 
     size_t          next_mrg_idx = g_self->i_mss.len;
@@ -863,7 +865,7 @@ static void read_object(ezld_obj_t *obj) {
         g_self->i_out.out_abi_ver = ehdr.e_ident[EI_ABIVERSION];
         g_self->i_out.out_mach    = obj_arch;
     } else if (ehdr.e_ident[EI_DATA] != g_self->i_out.out_endian ||
-               ehdr.e_ident[EI_OSABI] != g_self->i_out.out_abi_ver ||
+               ehdr.e_ident[EI_OSABI] != g_self->i_out.out_abi ||
                ehdr.e_ident[EI_ABIVERSION] != g_self->i_out.out_abi_ver ||
                obj_arch != g_self->i_out.out_mach) {
         ezld_runtime_exit(
@@ -1068,7 +1070,7 @@ static void write_exec(void) {
             }
 
             if (sh_flags & SHF_EXECINSTR) {
-                phdr.p_flags = PF_X;
+                phdr.p_flags |= PF_X;
             }
 
             (void)ezld_array_push(tmp_phdrs);
