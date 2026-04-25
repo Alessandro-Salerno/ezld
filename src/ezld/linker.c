@@ -303,30 +303,6 @@ EZLD_MAYBE_FUTURE static inline int32_t sext(uint32_t x, int bits) {
 }
 
 /**
- * @brief calculate the maximum of two Elf32_Addr values
- *
- * @param a the first value
- * @param b the second value
- *
- * @return max(a, b)
- */
-static inline Elf32_Addr maxaddr32(Elf32_Addr a, Elf32_Addr b) {
-    return (a > b) ? a : b;
-}
-
-/**
- * @brief calculate the maximum of two Elf32_Word values
- *
- * @param a the first value
- * @param b the second value
- *
- * @return max(a, b)
- */
-static inline Elf32_Word maxword32(Elf32_Word a, Elf32_Word b) {
-    return (a > b) ? a : b;
-}
-
-/**
  * @brief tries to recognize a CPU architecture from the ELF header machine
  * identifier
  *
@@ -662,6 +638,44 @@ static Elf32_Shdr read_shdr(size_t shndx, bool randacc, ezld_obj_t *obj) {
 }
 
 /**
+ * @brief Safely loads an ELF string table from an object file
+ *
+ * @param obj The object file
+ * @param strtab_index The index into the section header table where the
+ * strtab's section header resides
+ *
+ * @return A pointer to the string table's contents
+ */
+static char *read_strtab(ezld_obj_t *obj, size_t strtab_index) {
+    Elf32_Shdr sh = read_shdr(strtab_index, true, obj);
+
+    if (sh.sh_type != SHT_STRTAB) {
+        ezld_runtime_message(
+            EZLD_EMSG_WARN,
+            "string table at index %zu in '%s' is not of type SHT_STRTAB",
+            strtab_index,
+            obj->obj_filepath);
+    }
+
+    char *strtab_contents = (char *)ezld_runtime_alloc(1, sh.sh_size);
+    ezld_runtime_read_exact_at(strtab_contents,
+                               sh.sh_size,
+                               sh.sh_offset,
+                               obj->obj_filepath,
+                               obj->obj_file);
+
+    if (strtab_contents[sh.sh_size - 1] != 0) {
+        ezld_runtime_exit(
+            EZLD_ECODE_BADSEC,
+            "string table at index %zu in '%s' is not null-terminated",
+            strtab_index,
+            obj->obj_filepath);
+    }
+
+    return strtab_contents;
+}
+
+/**
  * @brief Reads a symbol table entry from an object file
  *
  * @param stndx the symbol index
@@ -714,8 +728,7 @@ static void merge_symtabs(ezld_obj_t *obj) {
     }
 
     ezld_obj_sec_t *strtab_sec = &obj->obj_oss.buf[obj_symtab->os_shdr.sh_link];
-    size_t          num_entires =
-        obj_symtab->os_shdr.sh_size / obj_symtab->os_shdr.sh_entsize;
+    size_t          num_entires = obj_symtab->os_elems;
     read_section_contents(strtab_sec);
     ezld_runtime_seek(
         obj_symtab->os_shdr.sh_offset, obj->obj_filepath, obj->obj_file);
@@ -760,75 +773,43 @@ static void merge_symtabs(ezld_obj_t *obj) {
             continue;
         }
 
-        size_t     glob_strndx = globstr_add(obj_sym->osy_name);
-        size_t     glob_symndx = resolve_sym(NULL, obj_sym, glob_strndx, false);
-        Elf32_Sym *glob_sym    = NULL;
-
-        uint32_t glob_shidx   = SHN_COMMON;
-        uint32_t glob_sym_off = entry.st_value;
-
-        if (glob_symndx != EZLD_GLOB_SYM_UNDEF) {
-            glob_sym = &g_self->i_globsymtab.buf[glob_symndx - 1];
-
-            if (entry.st_shndx == SHN_COMMON) {
-                // Global COMMON symbol shall have size and alignemtn (st_value)
-                // equal to the largest declared in the various object files
-                if (glob_sym->st_shndx == SHN_COMMON) {
-                    glob_sym->st_size =
-                        maxword32(glob_sym->st_size, entry.st_size);
-                    glob_sym->st_value =
-                        maxaddr32(glob_sym->st_value, entry.st_value);
-                }
-                // We don't add the same COMMON entry again
-                continue;
-            }
-
-            if (ELF32_ST_BIND(entry.st_info) == STB_WEAK) {
-                continue;
-            }
-
-            if (entry.st_shndx < SHN_LORESERVE &&
-                glob_sym->st_shndx != SHN_COMMON &&
-                ELF32_ST_BIND(glob_sym->st_info) == STB_GLOBAL) {
-                ezld_runtime_exit(EZLD_ECODE_BADSYM,
-                                  "multiple definitions of symbol '%s'",
-                                  obj_sym->osy_name);
-            }
-
-            // If the current symbol entry is not marked with SHN_COMMON and it
-            // is not a redefinition, we treat this as an authoritative
-            // definition valid for all previous and future COMMON symbols with
-            // this name
-            ezld_obj_sec_t *sym_sec =
-                &obj_symtab->os_obj->obj_oss.buf[entry.st_shndx];
-            glob_shidx   = sym_sec->os_mrg->ms_ndx;
-            glob_sym_off = entry.st_value + sym_sec->os_transl;
-        } else if (entry.st_shndx < SHN_LORESERVE) {
-            // Brand new regular symbol
-            ezld_obj_sec_t *sym_sec =
-                &obj_symtab->os_obj->obj_oss.buf[entry.st_shndx];
-            glob_sym     = ezld_array_push(g_self->i_globsymtab);
-            glob_shidx   = sym_sec->os_mrg->ms_ndx;
-            glob_sym_off = entry.st_value + sym_sec->os_transl;
-            // This starts at 1 to use 0 as NULL
-            glob_symndx = g_self->i_globsymtab.len;
-        } else if (entry.st_shndx == SHN_COMMON) {
-            // Fist time encountering this COMMON symbol: we add it to the table
-            glob_sym    = ezld_array_push(g_self->i_globsymtab);
-            glob_symndx = g_self->i_globsymtab.len;
+        if (entry.st_name >= SHN_LORESERVE) {
+            ezld_runtime_exit(
+                EZLD_ECODE_BADSYM,
+                "symbol '%s' in '%s' uses unsupported special section",
+                obj_sym->osy_name,
+                obj->obj_filepath);
         }
 
-        // NOTE: here we know the current symbol is the strongest it can be:
-        // STB_LOCAL is never added and STB_WEAK will already have been filtered
-        // out if there was an existing definition. Same goes for SHN_UNDEF and
-        // SHN_COMMON.
+        if (ELF32_ST_BIND(entry.st_info) != STB_GLOBAL) {
+            ezld_runtime_exit(EZLD_ECODE_BADSYM,
+                              "symbol '%s' in '%s' uses unsupported binding",
+                              obj_sym->osy_name,
+                              obj->obj_filepath);
+        }
+
+        size_t glob_strndx = globstr_add(obj_sym->osy_name);
+        size_t glob_symndx = resolve_sym(NULL, obj_sym, glob_strndx, false);
+
+        if (glob_symndx != EZLD_GLOB_SYM_UNDEF) {
+            ezld_runtime_exit(EZLD_ECODE_BADSYM,
+                              "multiple definitions of symbol '%s'",
+                              obj_sym->osy_name);
+        }
+
+        ezld_obj_sec_t *sym_sec =
+            &obj_symtab->os_obj->obj_oss.buf[entry.st_shndx];
+        size_t     glob_shidx = sym_sec->os_mrg->ms_ndx;
+        Elf32_Sym *glob_sym   = ezld_array_push(g_self->i_globsymtab);
+
         glob_sym->st_shndx = glob_shidx;
-        glob_sym->st_value = glob_sym_off;
+        glob_sym->st_value = entry.st_value + sym_sec->os_transl;
         glob_sym->st_name  = glob_strndx;
         glob_sym->st_size  = entry.st_size;
         glob_sym->st_info  = entry.st_info;
 
-        obj_sym->osy_globndx = glob_symndx;
+        // This starts at 1 to use 0 as NULL
+        obj_sym->osy_globndx = g_self->i_globsymtab.len;
 
         // We can compare indices directly because duplicate strings get
         // collapsed by globstr_add so if the index matches, the contents will
@@ -900,31 +881,19 @@ static void read_object(ezld_obj_t *obj) {
                           obj->obj_filepath);
     }
 
-    Elf32_Shdr shstrtab_sh = read_shdr(ehdr.e_shstrndx, true, obj);
-
-    if (shstrtab_sh.sh_type != SHT_STRTAB) {
-        ezld_runtime_message(
-            EZLD_EMSG_WARN,
-            "section header string section in '%s' is not of type SHT_STRTAB",
-            obj->obj_filepath);
-    }
-
-    char *shstrtab = (char *)ezld_runtime_alloc(1, shstrtab_sh.sh_size);
-    ezld_runtime_read_exact_at(shstrtab,
-                               shstrtab_sh.sh_size,
-                               shstrtab_sh.sh_offset,
-                               obj->obj_filepath,
-                               obj->obj_file);
+    char *shstrtab = read_strtab(obj, ehdr.e_shstrndx);
 
     ezld_runtime_seek(ehdr.e_shoff, obj->obj_filepath, obj->obj_file);
     for (size_t i = 0; i < ehdr.e_shnum; i++) {
-        Elf32_Shdr shdr = read_shdr(0, false, obj);
+        Elf32_Shdr  shdr        = read_shdr(0, false, obj);
+        const char *objsec_name = &shstrtab[shdr.sh_name];
 
         ezld_obj_sec_t *objsec = ezld_array_push(obj->obj_oss);
         objsec->os_obj         = obj;
         objsec->os_shdr        = shdr;
         objsec->os_elems       = shdr.sh_size;
         objsec->os_data        = NULL;
+        objsec->os_name        = shstr_add(objsec_name);
 
         if (shdr.sh_entsize != 0) {
             objsec->os_elems /= shdr.sh_entsize;
@@ -933,9 +902,6 @@ static void read_object(ezld_obj_t *obj) {
         if (i == ehdr.e_shstrndx) {
             objsec->os_data = (uint8_t *)shstrtab;
         }
-
-        const char *objsec_name = &shstrtab[shdr.sh_name];
-        objsec->os_name         = shstr_add(objsec_name);
 
         if (shdr.sh_type == SHT_SYMTAB) {
             if (obj->obj_ost.ost_os != NULL) {
