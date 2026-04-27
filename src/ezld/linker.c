@@ -65,6 +65,9 @@ typedef struct ezld_obj_sec {
      * This field is not set upon loding, but rather on merge */
     size_t os_transl;
     /** Index into `os_mrg.ms_oss` where this section is located */
+    size_t os_ndx;
+    /** Index of the merged section to which this object section belongs in
+     * `i_mss` */
     size_t os_mrgndx;
     /** For symbol tables, this field represents the index into
      * `os_obj->obj_symtabs` */
@@ -513,11 +516,12 @@ static void merge_section(ezld_obj_sec_t *objsec) {
             continue;
         }
 
-        size_t next_idx = mrg->ms_oss.len;
+        size_t next_idx   = mrg->ms_oss.len;
+        objsec->os_mrgndx = i;
 
         if (ezld_array_is_empty(mrg->ms_oss)) {
             *ezld_array_push(mrg->ms_oss) = objsec;
-            objsec->os_mrgndx             = next_idx;
+            objsec->os_ndx                = next_idx;
             objsec->os_transl             = 0;
             mrg->ms_memsz                 = objsec->os_shdr.sh_size;
             return;
@@ -561,7 +565,7 @@ static void merge_section(ezld_obj_sec_t *objsec) {
         }
 
         *ezld_array_push(mrg->ms_oss) = objsec;
-        objsec->os_mrgndx             = next_idx;
+        objsec->os_ndx                = next_idx;
         objsec->os_transl             = transl_off;
         mrg->ms_memsz += objsec->os_shdr.sh_size + misalign;
         return;
@@ -574,7 +578,8 @@ static void merge_section(ezld_obj_sec_t *objsec) {
     new_mrg->ms_memsz            = 0;
     new_mrg->ms_fileoff          = 0;
     ezld_array_init(new_mrg->ms_oss);
-    objsec->os_mrgndx                 = 0;
+    objsec->os_mrgndx                 = next_mrg_idx;
+    objsec->os_ndx                    = 0;
     objsec->os_transl                 = 0;
     *ezld_array_push(new_mrg->ms_oss) = objsec;
 }
@@ -648,16 +653,17 @@ static Elf32_Rela endian_rela(Elf32_Rela rela) {
  */
 static Elf32_Shdr read_shdr(size_t shndx, bool randacc, ezld_obj_t *obj) {
     Elf32_Shdr shdr = {0};
-    size_t     shsz = obj->obj_ehdr.e_shentsize;
 
     if (randacc) {
         ezld_runtime_read_exact_at(&shdr,
-                                   shsz,
-                                   shndx * shsz + obj->obj_ehdr.e_shoff,
+                                   sizeof(Elf32_Shdr),
+                                   shndx * sizeof(Elf32_Shdr) +
+                                       obj->obj_ehdr.e_shoff,
                                    obj->obj_filepath,
                                    obj->obj_file);
     } else {
-        ezld_runtime_read_exact(&shdr, shsz, obj->obj_filepath, obj->obj_file);
+        ezld_runtime_read_exact(
+            &shdr, sizeof(Elf32_Shdr), obj->obj_filepath, obj->obj_file);
     }
 
     return endian_shdr(shdr);
@@ -808,7 +814,7 @@ static void merge_symtabs(ezld_obj_t *obj, ezld_obj_symtab_t *obj_symtab) {
             continue;
         }
 
-        if (entry.st_name >= SHN_LORESERVE) {
+        if (entry.st_shndx >= SHN_LORESERVE) {
             ezld_runtime_exit(
                 EZLD_ECODE_BADSYM,
                 "symbol '%s' in '%s' uses unsupported special section",
@@ -886,11 +892,11 @@ static void read_object(ezld_obj_t *obj) {
         g_self->i_out.out_endian  = ehdr.e_ident[EI_DATA];
         g_self->i_out.out_abi     = ehdr.e_ident[EI_OSABI];
         g_self->i_out.out_abi_ver = ehdr.e_ident[EI_ABIVERSION];
-        g_self->i_out.out_mach    = obj_arch;
+        g_self->i_out.out_mach    = ehdr.e_machine;
     } else if (ehdr.e_ident[EI_DATA] != g_self->i_out.out_endian ||
                ehdr.e_ident[EI_OSABI] != g_self->i_out.out_abi ||
                ehdr.e_ident[EI_ABIVERSION] != g_self->i_out.out_abi_ver ||
-               obj_arch != g_self->i_out.out_mach) {
+               ehdr.e_machine != g_self->i_out.out_mach) {
         ezld_runtime_exit(
             EZLD_ECODE_BADFILE,
             "'%s' is incompatible with one or more previsouly specified files",
@@ -912,6 +918,17 @@ static void read_object(ezld_obj_t *obj) {
         ezld_runtime_exit(EZLD_ECODE_BADFILE,
                           "'%s' is not a relocatable object file",
                           obj->obj_filepath);
+    }
+
+    // NOTE: this now guarantees that the two values match perfectly and are
+    // interchangeable
+    if (ehdr.e_shentsize != sizeof(Elf32_Shdr)) {
+        ezld_runtime_exit(EZLD_ECODE_BADFILE,
+                          "in %s: malformed header: invalid section header "
+                          "size %zu (expected %zu)",
+                          obj->obj_filepath,
+                          ehdr.e_shentsize,
+                          sizeof(Elf32_Shdr));
     }
 
     char *shstrtab = read_strtab(obj, ehdr.e_shstrndx);
@@ -940,7 +957,7 @@ static void read_object(ezld_obj_t *obj) {
         if (shdr.sh_type == SHT_SYMTAB) {
             ezld_obj_symtab_t *symtab = ezld_array_push(obj->obj_symtabs);
             symtab->ost_os            = objsec;
-            objsec->os_mrgndx         = 0;
+            objsec->os_ndx            = 0;
             objsec->os_link           = symtab_idx++;
             // NOTE: we defer merger because otherwise the symbol table's string
             // table may not be already in memory!
@@ -1114,9 +1131,9 @@ static void write_exec(void) {
     for (size_t i = 0; i < tmp_phdrs.len; i++) {
         Elf32_Phdr      phdr = tmp_phdrs.buf[i].phdr;
         ezld_mrg_sec_t *sec  = tmp_phdrs.buf[i].sec;
-        seg_off += phdr.p_align - (seg_off % phdr.p_align);
-        phdr.p_offset   = seg_off;
-        sec->ms_fileoff = seg_off;
+        seg_off              = round_up(seg_off, phdr.p_align);
+        phdr.p_offset        = seg_off;
+        sec->ms_fileoff      = seg_off;
         // NOTE: we save this to avoid subtle endianness bugs later
         size_t advance = phdr.p_filesz;
         phdr           = endian_phdr(phdr);
@@ -1204,7 +1221,7 @@ static void align_sections(void) {
             seg_align > sh_align) {
             align = seg_align;
         }
-        mrg->ms_memsz = mrg->ms_memsz + (align - (mrg->ms_memsz % align));
+        mrg->ms_memsz = round_up(mrg->ms_memsz, align);
 
         if (!(ezld_array_first(mrg->ms_oss)->os_shdr.sh_flags & SHF_ALLOC)) {
             continue;
@@ -1321,7 +1338,7 @@ static void free_instance(void) {
         }
         ezld_array_free(obj->obj_oss);
         for (size_t j = 0; j < obj->obj_symtabs.len; j++) {
-            ezld_obj_symtab_t *symtab = &obj->obj_symtabs.buf[i];
+            ezld_obj_symtab_t *symtab = &obj->obj_symtabs.buf[j];
             ezld_array_free(symtab->ost_syms);
         }
         ezld_array_free(obj->obj_symtabs);
