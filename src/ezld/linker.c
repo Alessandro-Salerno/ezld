@@ -630,6 +630,13 @@ static Elf32_Phdr endian_phdr(Elf32_Phdr phdr) {
     return phdr;
 }
 
+static Elf32_Rela endian_rela(Elf32_Rela rela) {
+    rela.r_offset = endian32(rela.r_offset);
+    rela.r_info   = endian32(rela.r_info);
+    rela.r_addend = endian32(rela.r_addend);
+    return rela;
+}
+
 /**
  * @brief Reads a section header from an object file
  *
@@ -874,15 +881,6 @@ static void read_object(ezld_obj_t *obj) {
             EZLD_ECODE_BADFILE, "'%s' is not a 32-bit ELF", obj->obj_filepath);
     }
 
-    uint16_t obj_arch = endian16(ehdr.e_machine);
-    if (!EZLD_IS_SUPPORTED_ARCH(obj_arch)) {
-        ezld_runtime_exit(
-            EZLD_ECODE_BADFILE,
-            "file '%s' is for unsupported machine architecture '%s'",
-            obj->obj_filepath,
-            arch_name(obj_arch));
-    }
-
     if (!g_self->i_out.out_set) {
         g_self->i_out.out_set     = true;
         g_self->i_out.out_endian  = ehdr.e_ident[EI_DATA];
@@ -901,6 +899,14 @@ static void read_object(ezld_obj_t *obj) {
 
     ehdr          = endian_ehdr(ehdr);
     obj->obj_ehdr = ehdr;
+
+    if (!EZLD_IS_SUPPORTED_ARCH(ehdr.e_machine)) {
+        ezld_runtime_exit(
+            EZLD_ECODE_BADFILE,
+            "file '%s' is for unsupported machine architecture '%s'",
+            obj->obj_filepath,
+            arch_name(ehdr.e_machine));
+    }
 
     if (ehdr.e_type != ET_REL) {
         ezld_runtime_exit(EZLD_ECODE_BADFILE,
@@ -1332,7 +1338,7 @@ static void free_instance(void) {
     fclose(g_self->i_out.out_file);
 }
 
-// TODO: fix HUGE endianness UB here
+// TODO: fix HUGE endianness issues here
 /**
  * @brief Applies relocations to the final executable (after it has been written
  * to disk)
@@ -1505,9 +1511,8 @@ static void rela_section(ezld_obj_sec_t *objsec) {
     size_t             num_entries = objsec->os_elems;
     Elf32_Rela        *relas       = (Elf32_Rela *)objsec->os_data;
 
-    // TODO: fix endianness here too
     for (size_t i = 0; i < num_entries; i++) {
-        Elf32_Rela entry = relas[i];
+        Elf32_Rela entry = endian_rela(relas[i]);
 
         if (entry.r_offset >= target->os_shdr.sh_size) {
             ezld_runtime_exit(EZLD_ECODE_BADSEC,
