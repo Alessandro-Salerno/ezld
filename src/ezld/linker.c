@@ -701,7 +701,7 @@ static char *read_strtab(ezld_obj_t *obj, size_t strtab_index) {
                                obj->obj_filepath,
                                obj->obj_file);
 
-    if (strtab_contents[sh.sh_size - 1] != 0) {
+    if (sh.sh_size == 0 || strtab_contents[sh.sh_size - 1] != 0) {
         ezld_runtime_exit(
             EZLD_ECODE_BADSEC,
             "string table at index %zu in '%s' is not null-terminated",
