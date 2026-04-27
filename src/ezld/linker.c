@@ -1087,14 +1087,16 @@ static void write_exec(void) {
         seg_off += phdr.p_align - (seg_off % phdr.p_align);
         phdr.p_offset   = seg_off;
         sec->ms_fileoff = seg_off;
-        phdr            = endian_phdr(phdr);
+        // NOTE: we save this to avoid subtle endianness bugs later
+        size_t advance = phdr.p_filesz;
+        phdr           = endian_phdr(phdr);
         ezld_runtime_write_exact(&phdr,
                                  sizeof(Elf32_Phdr),
                                  g_self->i_cfg.cfg_outpath,
                                  g_self->i_out.out_file);
         (void)write_segment(
             sec, seg_off, g_self->i_cfg.cfg_outpath, g_self->i_out.out_file);
-        seg_off += phdr.p_filesz;
+        seg_off += advance;
     }
 
     ezld_runtime_seek(
