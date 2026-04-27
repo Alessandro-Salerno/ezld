@@ -215,6 +215,10 @@ typedef struct ezld_instance {
 // passed to all functions, or by syncronizing in ezld directly (worse)
 static ezld_instance_t *g_self = NULL;
 
+static inline size_t round_up(size_t value, size_t multiple) {
+    return (((value) + (multiple - 1)) & ~(multiple - 1));
+}
+
 /**
  * @return `true` if the endianness of the input/output files is different from
  * that of the host machine, `false` otherwise
@@ -548,11 +552,18 @@ static void merge_section(ezld_obj_sec_t *objsec) {
                               objsec_name_str);
         }
 
-        size_t transl_off             = last->os_transl + last->os_shdr.sh_size;
+        size_t transl_off = last->os_transl + last->os_shdr.sh_size;
+        size_t misalign   = 0;
+        if (objsec->os_shdr.sh_addralign != 0) {
+            size_t new_off = round_up(transl_off, objsec->os_shdr.sh_addralign);
+            misalign       = new_off - transl_off;
+            transl_off     = new_off;
+        }
+
         *ezld_array_push(mrg->ms_oss) = objsec;
         objsec->os_mrgndx             = next_idx;
         objsec->os_transl             = transl_off;
-        mrg->ms_memsz += objsec->os_shdr.sh_size;
+        mrg->ms_memsz += objsec->os_shdr.sh_size + misalign;
         return;
     }
 
