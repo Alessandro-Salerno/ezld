@@ -1440,14 +1440,21 @@ static void relocate(uint8_t  *data,
 }
 
 static void rela_section(ezld_obj_sec_t *objsec) {
-    // TODO: handle case in which symtab is wrong
-    // size_t symtab_idx = objsec->os_shdr.sh_link;
-    ezld_obj_t     *obj        = objsec->os_obj;
-    size_t          target_idx = objsec->os_shdr.sh_info;
-    ezld_obj_sec_t *target     = &obj->obj_oss.buf[target_idx];
+    ezld_obj_t *obj         = objsec->os_obj;
+    size_t      target_idx  = objsec->os_shdr.sh_info;
+    const char *objsec_name = shstr_from_idx(objsec->os_name).gs_data;
+    if (target_idx >= obj->obj_oss.len) {
+        ezld_runtime_exit(EZLD_ECODE_BADSEC,
+                          "in %s:%s: malformed section header: section header "
+                          "field sh_info points to invalid section %zu",
+                          obj->obj_filepath,
+                          objsec_name,
+                          target_idx);
+    }
+
+    ezld_obj_sec_t *target = &obj->obj_oss.buf[target_idx];
     read_section_contents(target);
     const char *target_name = shstr_from_idx(target->os_name).gs_data;
-    const char *objsec_name = shstr_from_idx(objsec->os_name).gs_data;
 
     if (objsec->os_shdr.sh_entsize != sizeof(Elf32_Rela)) {
         ezld_runtime_exit(
@@ -1490,6 +1497,18 @@ static void rela_section(ezld_obj_sec_t *objsec) {
     // TODO: fix endianness here too
     for (size_t i = 0; i < num_entries; i++) {
         Elf32_Rela entry = relas[i];
+
+        if (entry.r_offset >= target->os_shdr.sh_size) {
+            ezld_runtime_exit(EZLD_ECODE_BADSEC,
+                              "in %s:%s: malformed relocation entry: entry "
+                              "field r_offset in entry %zu has a value greater "
+                              "than the target section's size (%zu > %zu)",
+                              obj->obj_filepath,
+                              objsec_name,
+                              entry.r_offset,
+                              target->os_shdr.sh_size);
+        }
+
         // off = start of merged section in executable + offset inside merged
         // section where the original object section starts + offset into the
         // object section where the relocation needs to be applied
@@ -1501,8 +1520,8 @@ static void rela_section(ezld_obj_sec_t *objsec) {
 
         if (symtab_idx >= symtab->ost_syms.len) {
             ezld_runtime_exit(EZLD_ECODE_BADSYM,
-                              "in %s:%s: reference to invalid symbol %zu in "
-                              "symbol table '%s'",
+                              "in %s:%s: malformed relocation entry: reference "
+                              "to invalid symbol %zu in symbol table '%s'",
                               obj->obj_filepath,
                               objsec_name,
                               symtab_idx,
