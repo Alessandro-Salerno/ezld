@@ -38,6 +38,11 @@
 
 #define EZLD_IS_SUPPORTED_ARCH(arch) ((arch) == EM_RISCV)
 
+// NOTE: IMPORTANT: FIXME: Keeping pointers to items inside ezld_array is only
+// valid if ezld_array_allocate is used before pushing them. This is because
+// ezld_array_push can cause the array to be reallocated and all internal
+// pointers to become invalid. The use of indices is strongly encouraged.
+
 typedef struct ezld_mrg_sec ezld_mrg_sec_t;
 typedef struct ezld_obj     ezld_obj_t;
 
@@ -59,11 +64,8 @@ typedef struct ezld_obj_sec {
     /** The translation applied to this section in the final merged section.
      * This field is not set upon loding, but rather on merge */
     size_t os_transl;
-    /** Pointer to the merged section of which this object section is a part of.
-     * This field is not set upon loading, but rather on merge */
-    ezld_mrg_sec_t *os_mrg;
     /** Index into `os_mrg.ms_oss` where this section is located */
-    size_t os_ndx;
+    size_t os_mrgndx;
     /** For symbol tables, this field represents the index into
      * `os_obj->obj_symtabs` */
     size_t os_link;
@@ -95,7 +97,8 @@ typedef struct ezld_mrg_sec {
      * `write_exec` for use by that function and by relocation functions */
     size_t ms_fileoff;
     /** Array of object file sections from which this merged section was
-     * obtained */
+     * obtained. This is safe to keep because object sections pointers come from
+     * the preallocated array in ezld_obj_t */
     ezld_array(ezld_obj_sec_t *) ms_oss;
 } ezld_mrg_sec_t;
 
@@ -118,7 +121,9 @@ typedef struct ezld_obj_sym_t {
  * @brief An in-memory representation of an object file symbol table
  */
 typedef struct ezld_obj_symtab {
-    /** Pointer to  the object file section struct of this symbol table */
+    /** Pointer to  the object file section struct of this symbol table. This is
+     * safe to keep because object section pointers come from the preallocated
+     * array in ezld_obj_t */
     ezld_obj_sec_t *ost_os;
     /** Array of symbols contained in this table */
     ezld_array(ezld_obj_sym_t) ost_syms;
@@ -382,6 +387,10 @@ EZLD_MAYBE_FUTURE static ezld_glob_str_t globstr_from_idx(size_t glob_idx) {
     return g_self->i_globstrtab.gst_strs.buf[glob_idx];
 }
 
+static inline ezld_mrg_sec_t *mrg_from_secidx(ezld_obj_sec_t *objsec) {
+    return &g_self->i_mss.buf[objsec->os_mrgndx];
+}
+
 /**
  * @brief Adds a string to a global string table
  *
@@ -504,8 +513,7 @@ static void merge_section(ezld_obj_sec_t *objsec) {
 
         if (ezld_array_is_empty(mrg->ms_oss)) {
             *ezld_array_push(mrg->ms_oss) = objsec;
-            objsec->os_ndx                = next_idx;
-            objsec->os_mrg                = mrg;
+            objsec->os_mrgndx             = next_idx;
             objsec->os_transl             = 0;
             mrg->ms_memsz                 = objsec->os_shdr.sh_size;
             return;
@@ -542,8 +550,7 @@ static void merge_section(ezld_obj_sec_t *objsec) {
 
         size_t transl_off             = last->os_transl + last->os_shdr.sh_size;
         *ezld_array_push(mrg->ms_oss) = objsec;
-        objsec->os_ndx                = next_idx;
-        objsec->os_mrg                = mrg;
+        objsec->os_mrgndx             = next_idx;
         objsec->os_transl             = transl_off;
         mrg->ms_memsz += objsec->os_shdr.sh_size;
         return;
@@ -556,8 +563,7 @@ static void merge_section(ezld_obj_sec_t *objsec) {
     new_mrg->ms_memsz            = 0;
     new_mrg->ms_fileoff          = 0;
     ezld_array_init(new_mrg->ms_oss);
-    objsec->os_ndx                    = 0;
-    objsec->os_mrg                    = new_mrg;
+    objsec->os_mrgndx                 = 0;
     objsec->os_transl                 = 0;
     *ezld_array_push(new_mrg->ms_oss) = objsec;
 }
@@ -810,7 +816,7 @@ static void merge_symtabs(ezld_obj_t *obj, ezld_obj_symtab_t *obj_symtab) {
 
         ezld_obj_sec_t *sym_sec =
             &obj_symtab_sec->os_obj->obj_oss.buf[entry.st_shndx];
-        size_t     glob_shidx = sym_sec->os_mrg->ms_ndx;
+        size_t     glob_shidx = mrg_from_secidx(sym_sec)->ms_ndx;
         Elf32_Sym *glob_sym   = ezld_array_push(g_self->i_globsymtab);
 
         glob_sym->st_shndx = glob_shidx;
@@ -893,6 +899,7 @@ static void read_object(ezld_obj_t *obj) {
 
     char *shstrtab = read_strtab(obj, ehdr.e_shstrndx);
 
+    ezld_array_alloc(obj->obj_oss, ehdr.e_shnum);
     ezld_runtime_seek(ehdr.e_shoff, obj->obj_filepath, obj->obj_file);
     for (size_t i = 0, symtab_idx = 0; i < ehdr.e_shnum; i++) {
         Elf32_Shdr  shdr        = read_shdr(0, false, obj);
@@ -916,8 +923,7 @@ static void read_object(ezld_obj_t *obj) {
         if (shdr.sh_type == SHT_SYMTAB) {
             ezld_obj_symtab_t *symtab = ezld_array_push(obj->obj_symtabs);
             symtab->ost_os            = objsec;
-            objsec->os_mrg            = NULL;
-            objsec->os_ndx            = 0;
+            objsec->os_mrgndx         = 0;
             objsec->os_link           = symtab_idx++;
             // NOTE: we defer merger because otherwise the symbol table's string
             // table may not be already in memory!
@@ -1440,7 +1446,7 @@ static void rela_section(ezld_obj_sec_t *objsec) {
     size_t          target_idx = objsec->os_shdr.sh_info;
     ezld_obj_sec_t *target     = &obj->obj_oss.buf[target_idx];
     read_section_contents(target);
-    const char *target_name = shstr_from_idx(target->os_mrg->ms_name).gs_data;
+    const char *target_name = shstr_from_idx(target->os_name).gs_data;
     const char *objsec_name = shstr_from_idx(objsec->os_name).gs_data;
 
     if (objsec->os_shdr.sh_entsize != sizeof(Elf32_Rela)) {
@@ -1487,8 +1493,9 @@ static void rela_section(ezld_obj_sec_t *objsec) {
         // off = start of merged section in executable + offset inside merged
         // section where the original object section starts + offset into the
         // object section where the relocation needs to be applied
-        size_t off =
-            target->os_mrg->ms_fileoff + target->os_transl + entry.r_offset;
+        ezld_mrg_sec_t *mrg_target = mrg_from_secidx(target);
+        size_t          off =
+            mrg_target->ms_fileoff + target->os_transl + entry.r_offset;
         size_t sym_idx = ELF32_R_SYM(entry.r_info);
         size_t type    = ELF32_R_TYPE(entry.r_info);
 
@@ -1516,6 +1523,7 @@ static void rela_section(ezld_obj_sec_t *objsec) {
                 target_name,
                 target->os_transl + entry.r_offset,
                 sym->osy_name);
+            // NOTE: we continue so we can print ALL undefined references
             continue;
         }
 
@@ -1523,7 +1531,7 @@ static void rela_section(ezld_obj_sec_t *objsec) {
                  target->os_shdr.sh_size - entry.r_offset,
                  off,
                  type,
-                 target->os_mrg->ms_vaddr + target->os_transl + entry.r_offset,
+                 mrg_target->ms_vaddr + target->os_transl + entry.r_offset,
                  entry.r_addend,
                  glob_sym);
     }
