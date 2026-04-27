@@ -64,6 +64,9 @@ typedef struct ezld_obj_sec {
     ezld_mrg_sec_t *os_mrg;
     /** Index into `os_mrg.ms_oss` where this section is located */
     size_t os_ndx;
+    /** For symbol tables, this field represents the index into
+     * `os_obj->obj_symtabs` */
+    size_t os_link;
     /** Buffer containing all data relative to this section present in the
      * relative segment in the object file. This field is not set upon loading,
      * but rather it is set by the reader of this field if it is `NULL` */
@@ -131,17 +134,14 @@ typedef struct ezld_obj {
     FILE *obj_file;
     /** Index into `g_self.i_objs` where this object instance is found */
     size_t obj_ndx;
-    /** Object file symbol table instance relative to this object file. NOTE:
-     * Currently ezld supports only one symbol table per object file for
-     * simplicity, though ELF allows files to contain multiple ones, and most
-     * modern compilers and assemblers make use of this feature */
-    ezld_obj_symtab_t obj_ost;
     /**
      * ELF header of this object file
      */
     Elf32_Ehdr obj_ehdr;
     /** Array of object file sections contained in this object file */
     ezld_array(ezld_obj_sec_t) obj_oss;
+    /** Array of moemorized object symbol tables */
+    ezld_array(ezld_obj_symtab_t) obj_symtabs;
 } ezld_obj_t;
 
 /**
@@ -640,6 +640,35 @@ static Elf32_Shdr read_shdr(size_t shndx, bool randacc, ezld_obj_t *obj) {
 }
 
 /**
+ * @brief Reads a symbol table entry from an object file
+ *
+ * @param stndx the symbol index
+ * @param randacc if true, use stndx, else read from the file normally
+ * @param obj_symtab_sec the object section containing the raw symbol table
+ *
+ * @return the symbol table entry contents
+ */
+static Elf32_Sym
+read_sym(size_t stndx, bool randacc, ezld_obj_sec_t *obj_symtab_sec) {
+    ezld_obj_t *obj   = obj_symtab_sec->os_obj;
+    Elf32_Sym   entry = {0};
+
+    if (randacc) {
+        (void)stndx;
+        (void)obj_symtab_sec;
+        assert(false);
+        // TODO: implement this? This function should technically be able to
+        // read at `strdx`, but this feature is not used in the code, and might
+        // never be used
+    } else {
+        ezld_runtime_read_exact(
+            &entry, sizeof(Elf32_Sym), obj->obj_filepath, obj->obj_file);
+    }
+
+    return endian_sym(entry);
+}
+
+/**
  * @brief Safely loads an ELF string table from an object file
  *
  * @param obj The object file
@@ -678,67 +707,47 @@ static char *read_strtab(ezld_obj_t *obj, size_t strtab_index) {
 }
 
 /**
- * @brief Reads a symbol table entry from an object file
- *
- * @param stndx the symbol index
- * @param randacc if true, use stndx, else read from the file normally
- * @param obj the object file
- *
- * @return the symbol table entry contents
- */
-static Elf32_Sym read_sym(size_t stndx, bool randacc, ezld_obj_t *obj) {
-    ezld_obj_sec_t *obj_symtab = obj->obj_ost.ost_os;
-    Elf32_Sym       entry      = {0};
-
-    if (randacc) {
-        (void)stndx;
-        (void)obj_symtab;
-        assert(false);
-        // TODO: implement this? This function should technically be able to
-        // read at `strdx`, but this feature is not used in the code, and might
-        // never be used
-    } else {
-        ezld_runtime_read_exact(
-            &entry, sizeof(Elf32_Sym), obj->obj_filepath, obj->obj_file);
-    }
-
-    return endian_sym(entry);
-}
-
-/**
  * @brief Adds all symbols from an object file symbol table to the in-memory
  * table and adds known symbols to the global symbol table
  *
  * @param obj the object file
+ * @param obj_symtab the object symbol table in question
  */
-static void merge_symtabs(ezld_obj_t *obj) {
-    ezld_obj_sec_t *obj_symtab = obj->obj_ost.ost_os;
+static void merge_symtabs(ezld_obj_t *obj, ezld_obj_symtab_t *obj_symtab) {
+    ezld_obj_sec_t *obj_symtab_sec = obj_symtab->ost_os;
 
-    if (obj_symtab->os_shdr.sh_link >= obj->obj_oss.len) {
+    if (obj_symtab_sec->os_shdr.sh_link >= obj->obj_oss.len) {
         ezld_runtime_exit(EZLD_ECODE_BADSEC,
                           "symbol table for '%s' references "
                           "invalid string table number 0x%x",
                           obj->obj_filepath,
-                          obj_symtab->os_shdr.sh_link);
+                          obj_symtab_sec->os_shdr.sh_link);
     }
 
-    if (obj_symtab->os_shdr.sh_entsize != sizeof(Elf32_Sym)) {
+    if (obj_symtab_sec->os_shdr.sh_entsize != sizeof(Elf32_Sym)) {
         ezld_runtime_exit(EZLD_ECODE_BADSEC,
                           "symbol table for '%s' has invalid entry size %zu",
                           obj->obj_filepath,
-                          obj_symtab->os_shdr.sh_entsize);
+                          obj_symtab_sec->os_shdr.sh_entsize);
     }
 
-    ezld_obj_sec_t *strtab_sec = &obj->obj_oss.buf[obj_symtab->os_shdr.sh_link];
-    size_t          num_entires = obj_symtab->os_elems;
-    read_section_contents(strtab_sec);
+    ezld_obj_sec_t *strtab_sec =
+        &obj->obj_oss.buf[obj_symtab_sec->os_shdr.sh_link];
+    size_t num_entires = obj_symtab_sec->os_elems;
+    // NOTE: here we're not actually repeating logic from read_section_cnotents,
+    // because this is more specialized but cannot work on ezld_obj_sec_t
+    // objects
+    if (strtab_sec->os_data == NULL) {
+        strtab_sec->os_data =
+            (uint8_t *)read_strtab(obj, obj_symtab_sec->os_shdr.sh_link);
+    }
     ezld_runtime_seek(
-        obj_symtab->os_shdr.sh_offset, obj->obj_filepath, obj->obj_file);
+        obj_symtab_sec->os_shdr.sh_offset, obj->obj_filepath, obj->obj_file);
 
-    ezld_array_alloc(obj->obj_ost.ost_syms, num_entires);
+    ezld_array_alloc(obj_symtab->ost_syms, num_entires);
 
     for (size_t i = 0; i < num_entires; i++) {
-        Elf32_Sym entry = read_sym(i, false, obj);
+        Elf32_Sym entry = read_sym(i, false, obj_symtab_sec);
 
         if (entry.st_name >= strtab_sec->os_elems) {
             ezld_runtime_exit(
@@ -748,7 +757,7 @@ static void merge_symtabs(ezld_obj_t *obj) {
                 entry.st_name);
         }
 
-        ezld_obj_sym_t *obj_sym = ezld_array_push(obj->obj_ost.ost_syms);
+        ezld_obj_sym_t *obj_sym = ezld_array_push(obj_symtab->ost_syms);
         obj_sym->osy_esym       = entry;
         obj_sym->osy_name       = (char *)&strtab_sec->os_data[entry.st_name];
 
@@ -800,7 +809,7 @@ static void merge_symtabs(ezld_obj_t *obj) {
         }
 
         ezld_obj_sec_t *sym_sec =
-            &obj_symtab->os_obj->obj_oss.buf[entry.st_shndx];
+            &obj_symtab_sec->os_obj->obj_oss.buf[entry.st_shndx];
         size_t     glob_shidx = sym_sec->os_mrg->ms_ndx;
         Elf32_Sym *glob_sym   = ezld_array_push(g_self->i_globsymtab);
 
@@ -830,8 +839,7 @@ static void merge_symtabs(ezld_obj_t *obj) {
  */
 static void read_object(ezld_obj_t *obj) {
     ezld_array_init(obj->obj_oss);
-    obj->obj_ost.ost_os = NULL;
-    ezld_array_init(obj->obj_ost.ost_syms);
+    ezld_array_init(obj->obj_symtabs);
 
     Elf32_Ehdr ehdr = {0};
     ezld_runtime_read_exact(
@@ -886,7 +894,7 @@ static void read_object(ezld_obj_t *obj) {
     char *shstrtab = read_strtab(obj, ehdr.e_shstrndx);
 
     ezld_runtime_seek(ehdr.e_shoff, obj->obj_filepath, obj->obj_file);
-    for (size_t i = 0; i < ehdr.e_shnum; i++) {
+    for (size_t i = 0, symtab_idx = 0; i < ehdr.e_shnum; i++) {
         Elf32_Shdr  shdr        = read_shdr(0, false, obj);
         const char *objsec_name = &shstrtab[shdr.sh_name];
 
@@ -894,7 +902,7 @@ static void read_object(ezld_obj_t *obj) {
         objsec->os_obj         = obj;
         objsec->os_shdr        = shdr;
         objsec->os_elems       = shdr.sh_size;
-        objsec->os_data        = NULL;
+        objsec->os_data        = NULL; // defer content loading
         objsec->os_name        = shstr_add(objsec_name);
 
         if (shdr.sh_entsize != 0) {
@@ -906,23 +914,22 @@ static void read_object(ezld_obj_t *obj) {
         }
 
         if (shdr.sh_type == SHT_SYMTAB) {
-            if (obj->obj_ost.ost_os != NULL) {
-                ezld_runtime_message(
-                    EZLD_EMSG_WARN,
-                    "object file '%s' has more than one "
-                    "section of type SHT_SYMTAB, using first one",
-                    obj->obj_filepath);
-            } else {
-                obj->obj_ost.ost_os = objsec;
-                objsec->os_mrg      = NULL;
-                objsec->os_ndx      = 0;
-            }
+            ezld_obj_symtab_t *symtab = ezld_array_push(obj->obj_symtabs);
+            symtab->ost_os            = objsec;
+            objsec->os_mrg            = NULL;
+            objsec->os_ndx            = 0;
+            objsec->os_link           = symtab_idx++;
+            // NOTE: we defer merger because otherwise the symbol table's string
+            // table may not be already in memory!
         } else if (shdr.sh_type == SHT_PROGBITS || shdr.sh_type == SHT_NOBITS) {
             merge_section(objsec);
         }
     }
 
-    merge_symtabs(obj);
+    for (size_t i = 0; i < obj->obj_symtabs.len; i++) {
+        ezld_obj_symtab_t *symtab = &obj->obj_symtabs.buf[i];
+        merge_symtabs(obj, symtab);
+    }
 }
 
 /**
@@ -1290,7 +1297,11 @@ static void free_instance(void) {
             sec->os_data = NULL;
         }
         ezld_array_free(obj->obj_oss);
-        ezld_array_free(obj->obj_ost.ost_syms);
+        for (size_t j = 0; j < obj->obj_symtabs.len; j++) {
+            ezld_obj_symtab_t *symtab = &obj->obj_symtabs.buf[i];
+            ezld_array_free(symtab->ost_syms);
+        }
+        ezld_array_free(obj->obj_symtabs);
         fclose(obj->obj_file);
     }
 
@@ -1425,12 +1436,50 @@ static void relocate(uint8_t  *data,
 static void rela_section(ezld_obj_sec_t *objsec) {
     // TODO: handle case in which symtab is wrong
     // size_t symtab_idx = objsec->os_shdr.sh_link;
+    ezld_obj_t     *obj        = objsec->os_obj;
     size_t          target_idx = objsec->os_shdr.sh_info;
-    ezld_obj_sec_t *target     = &objsec->os_obj->obj_oss.buf[target_idx];
+    ezld_obj_sec_t *target     = &obj->obj_oss.buf[target_idx];
     read_section_contents(target);
     const char *target_name = shstr_from_idx(target->os_mrg->ms_name).gs_data;
-    size_t num_entries = objsec->os_shdr.sh_size / objsec->os_shdr.sh_entsize;
-    Elf32_Rela *relas  = (Elf32_Rela *)objsec->os_data;
+    const char *objsec_name = shstr_from_idx(objsec->os_name).gs_data;
+
+    if (objsec->os_shdr.sh_entsize != sizeof(Elf32_Rela)) {
+        ezld_runtime_exit(
+            EZLD_ECODE_BADSEC,
+            "in %s:%s: malformed section header: section of type "
+            "SHT_RELA has incorrect entry size %zu (expected %zu)",
+            objsec->os_obj->obj_filepath,
+            objsec_name,
+            objsec->os_shdr.sh_entsize,
+            sizeof(Elf32_Rela));
+    }
+
+    size_t symtab_idx = objsec->os_shdr.sh_link;
+    if (symtab_idx >= obj->obj_oss.len) {
+        ezld_runtime_exit(EZLD_ECODE_BADSEC,
+                          "in %s:%s: malformed section header: section header "
+                          "field sh_link points to invalid section index %zu",
+                          obj->obj_filepath,
+                          objsec_name,
+                          objsec->os_shdr.sh_link);
+    }
+
+    ezld_obj_sec_t *symtab_sec  = &obj->obj_oss.buf[symtab_idx];
+    const char     *symtab_name = shstr_from_idx(symtab_sec->os_name).gs_data;
+    if (symtab_sec->os_shdr.sh_type != SHT_SYMTAB) {
+        ezld_runtime_exit(EZLD_ECODE_BADSEC,
+                          "in %s:%s: malformed section header: section header "
+                          "field sh_link points to section with index %z (%s), "
+                          "which is not a symbol table",
+                          obj->obj_filepath,
+                          objsec_name,
+                          objsec->os_shdr.sh_link,
+                          symtab_name);
+    }
+
+    ezld_obj_symtab_t *symtab      = &obj->obj_symtabs.buf[symtab_sec->os_link];
+    size_t             num_entries = objsec->os_elems;
+    Elf32_Rela        *relas       = (Elf32_Rela *)objsec->os_data;
 
     // TODO: fix endianness here too
     for (size_t i = 0; i < num_entries; i++) {
@@ -1440,9 +1489,20 @@ static void rela_section(ezld_obj_sec_t *objsec) {
         // object section where the relocation needs to be applied
         size_t off =
             target->os_mrg->ms_fileoff + target->os_transl + entry.r_offset;
-        size_t          sym_idx = ELF32_R_SYM(entry.r_info);
-        size_t          type    = ELF32_R_TYPE(entry.r_info);
-        ezld_obj_sym_t *sym = &objsec->os_obj->obj_ost.ost_syms.buf[sym_idx];
+        size_t sym_idx = ELF32_R_SYM(entry.r_info);
+        size_t type    = ELF32_R_TYPE(entry.r_info);
+
+        if (symtab_idx >= symtab->ost_syms.len) {
+            ezld_runtime_exit(EZLD_ECODE_BADSYM,
+                              "in %s:%s: reference to invalid symbol %zu in "
+                              "symbol table '%s'",
+                              obj->obj_filepath,
+                              objsec_name,
+                              symtab_idx,
+                              symtab_name);
+        }
+
+        ezld_obj_sym_t *sym = &symtab->ost_syms.buf[sym_idx];
         Elf32_Sym       glob_sym;
 
         if (resolve_sym(&glob_sym, sym, 0, true) == EZLD_GLOB_SYM_UNDEF) {
