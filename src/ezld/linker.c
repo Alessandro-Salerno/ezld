@@ -988,27 +988,21 @@ static void read_objects(void) {
  * @param off the offset in the file where to place the segment's contents
  * @param filename the name of the destination file
  * @param file the actual file
- *
- * @return the number of bytes written to the file
  */
-static size_t write_segment(ezld_mrg_sec_t *sec,
-                            size_t          off,
-                            const char     *filename,
-                            FILE           *file) {
+static void write_segment(ezld_mrg_sec_t *sec,
+                          size_t          off,
+                          const char     *filename,
+                          FILE           *file) {
     if (ezld_array_first(sec->ms_oss)->os_shdr.sh_type == SHT_NOBITS) {
-        return 0;
+        return;
     }
 
-    size_t written = 0;
     for (size_t i = 0; i < sec->ms_oss.len; i++) {
         ezld_obj_sec_t *s = sec->ms_oss.buf[i];
         read_section_contents(s);
         ezld_runtime_write_exact_at(
-            s->os_data, s->os_shdr.sh_size, off + written, filename, file);
-        written += s->os_shdr.sh_size;
+            s->os_data, s->os_shdr.sh_size, off + s->os_transl, filename, file);
     }
-
-    return written;
 }
 
 /**
@@ -1141,7 +1135,7 @@ static void write_exec(void) {
                                  sizeof(Elf32_Phdr),
                                  g_self->i_cfg.cfg_outpath,
                                  g_self->i_out.out_file);
-        (void)write_segment(
+        write_segment(
             sec, seg_off, g_self->i_cfg.cfg_outpath, g_self->i_out.out_file);
         seg_off += advance;
     }
