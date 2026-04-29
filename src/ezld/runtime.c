@@ -128,8 +128,9 @@ void ezld_runtime_write_exact_at(void       *buf,
 
 void ezld_runtime_seek_end(const char *filename, FILE *file) {
     if (fseek(file, 0, SEEK_END) != 0) {
-        ezld_runtime_exit(
-            EZLD_ECODE_BADFILE, "unable to find end of '%s'", filename);
+        ezld_runtime_exit(EZLD_ECODE_BADFILE,
+                          "unable to find end of '%s'",
+                          filename);
     }
 }
 

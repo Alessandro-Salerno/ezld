@@ -81,23 +81,27 @@ static bool find_desc(cli_drt_desc_t  descriptors[],
 }
 
 bool cli_lkup_command(const char *command, cli_drt_desc_t *dst) {
-    return find_desc(
-        commands, sizeof commands / sizeof(cli_drt_desc_t), command, dst);
+    return find_desc(commands,
+                     sizeof commands / sizeof(cli_drt_desc_t),
+                     command,
+                     dst);
 }
 
 bool cli_lkup_option(const char *option, cli_drt_desc_t *dst) {
-    return find_desc(
-        options, sizeof options / sizeof(cli_drt_desc_t), option, dst);
+    return find_desc(options,
+                     sizeof options / sizeof(cli_drt_desc_t),
+                     option,
+                     dst);
 }
 
 cli_lkup_table_t cli_lkup_cmdtable(void) {
-    return (cli_lkup_table_t){.table = commands,
-                              .num_entries =
-                                  sizeof commands / sizeof(cli_drt_desc_t)};
+    return (cli_lkup_table_t){.table       = commands,
+                              .num_entries = sizeof commands /
+                                             sizeof(cli_drt_desc_t)};
 }
 
 cli_lkup_table_t cli_lkup_opttable(void) {
-    return (cli_lkup_table_t){.table = options,
-                              .num_entries =
-                                  sizeof options / sizeof(cli_drt_desc_t)};
+    return (cli_lkup_table_t){.table       = options,
+                              .num_entries = sizeof options /
+                                             sizeof(cli_drt_desc_t)};
 }

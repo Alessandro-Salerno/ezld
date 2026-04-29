@@ -90,15 +90,15 @@ static size_t parse_number(const char *str) {
     if (str[0] == '0') {
         start = 2;
         switch (tolower(str[1])) {
-        case 'x':
-            base = 16;
-            break;
-        case 'b':
-            base = 2;
-            break;
-        default:
-            start = 0;
-            break;
+            case 'x':
+                base = 16;
+                break;
+            case 'b':
+                base = 2;
+                break;
+            default:
+                start = 0;
+                break;
         }
     }
 

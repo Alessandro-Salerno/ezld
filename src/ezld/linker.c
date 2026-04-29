@@ -324,53 +324,53 @@ EZLD_MAYBE_FUTURE static inline int32_t sext(uint32_t x, int bits) {
  */
 const char *arch_name(uint16_t arch) {
     switch (arch) {
-    case EM_NONE:
-        return "No specific instruction set";
-    case EM_M32:
-        return "AT&T WE 32100";
-    case EM_SPARC:
-        return "SPARC";
-    case EM_386:
-        return "Intel 80386 (x86)";
-    case EM_68K:
-        return "Motorola 68000 (M68k)";
-    case EM_88K:
-        return "Motorola 88000 (M88k)";
-    case EM_860:
-        return "Intel 80860";
-    case EM_MIPS:
-        return "MIPS I Architecture";
-    case EM_S370:
-        return "IBM System/370";
-    case EM_MIPS_RS3_LE:
-        return "MIPS RS3000 Little-endian";
-    case EM_PPC:
-        return "PowerPC";
-    case EM_PPC64:
-        return "PowerPC (64-bit)";
-    case EM_ARM:
-        return "ARM (up to ARMv7-A)";
-    case EM_ALPHA:
-        return "Digital Alpha";
-    case EM_SH:
-        return "SuperH";
-    case EM_SPARCV9:
-        return "SPARC Version 9";
-    case EM_IA_64:
-        return "Intel Itanium (IA-64)";
-    case EM_X86_64:
-        return "AMD x86-64";
-    case EM_AARCH64:
-        return "ARM 64-bit (AArch64)";
-    case EM_RISCV:
-        return "RISC-V";
-    case EM_BPF:
-        return "Berkeley Packet Filter";
-    case EM_LOONGARCH:
-        return "LoongArch";
+        case EM_NONE:
+            return "No specific instruction set";
+        case EM_M32:
+            return "AT&T WE 32100";
+        case EM_SPARC:
+            return "SPARC";
+        case EM_386:
+            return "Intel 80386 (x86)";
+        case EM_68K:
+            return "Motorola 68000 (M68k)";
+        case EM_88K:
+            return "Motorola 88000 (M88k)";
+        case EM_860:
+            return "Intel 80860";
+        case EM_MIPS:
+            return "MIPS I Architecture";
+        case EM_S370:
+            return "IBM System/370";
+        case EM_MIPS_RS3_LE:
+            return "MIPS RS3000 Little-endian";
+        case EM_PPC:
+            return "PowerPC";
+        case EM_PPC64:
+            return "PowerPC (64-bit)";
+        case EM_ARM:
+            return "ARM (up to ARMv7-A)";
+        case EM_ALPHA:
+            return "Digital Alpha";
+        case EM_SH:
+            return "SuperH";
+        case EM_SPARCV9:
+            return "SPARC Version 9";
+        case EM_IA_64:
+            return "Intel Itanium (IA-64)";
+        case EM_X86_64:
+            return "AMD x86-64";
+        case EM_AARCH64:
+            return "ARM 64-bit (AArch64)";
+        case EM_RISCV:
+            return "RISC-V";
+        case EM_BPF:
+            return "Berkeley Packet Filter";
+        case EM_LOONGARCH:
+            return "LoongArch";
 
-    default:
-        return "(unknown)";
+        default:
+            return "(unknown)";
     }
 }
 
@@ -662,8 +662,10 @@ static Elf32_Shdr read_shdr(size_t shndx, bool randacc, ezld_obj_t *obj) {
                                    obj->obj_filepath,
                                    obj->obj_file);
     } else {
-        ezld_runtime_read_exact(
-            &shdr, sizeof(Elf32_Shdr), obj->obj_filepath, obj->obj_file);
+        ezld_runtime_read_exact(&shdr,
+                                sizeof(Elf32_Shdr),
+                                obj->obj_filepath,
+                                obj->obj_file);
     }
 
     return endian_shdr(shdr);
@@ -691,8 +693,10 @@ read_sym(size_t stndx, bool randacc, ezld_obj_sec_t *obj_symtab_sec) {
         // read at `strdx`, but this feature is not used in the code, and might
         // never be used
     } else {
-        ezld_runtime_read_exact(
-            &entry, sizeof(Elf32_Sym), obj->obj_filepath, obj->obj_file);
+        ezld_runtime_read_exact(&entry,
+                                sizeof(Elf32_Sym),
+                                obj->obj_filepath,
+                                obj->obj_file);
     }
 
     return endian_sym(entry);
@@ -761,18 +765,20 @@ static void merge_symtabs(ezld_obj_t *obj, ezld_obj_symtab_t *obj_symtab) {
                           obj_symtab_sec->os_shdr.sh_entsize);
     }
 
-    ezld_obj_sec_t *strtab_sec =
-        &obj->obj_oss.buf[obj_symtab_sec->os_shdr.sh_link];
-    size_t num_entires = obj_symtab_sec->os_elems;
+    ezld_obj_sec_t *strtab_sec  = &obj->obj_oss
+                                       .buf[obj_symtab_sec->os_shdr.sh_link];
+    size_t          num_entires = obj_symtab_sec->os_elems;
     // NOTE: here we're not actually repeating logic from read_section_cnotents,
     // because this is more specialized but cannot work on ezld_obj_sec_t
     // objects
     if (strtab_sec->os_data == NULL) {
-        strtab_sec->os_data =
-            (uint8_t *)read_strtab(obj, obj_symtab_sec->os_shdr.sh_link);
+        strtab_sec->os_data = (uint8_t *)read_strtab(
+            obj,
+            obj_symtab_sec->os_shdr.sh_link);
     }
-    ezld_runtime_seek(
-        obj_symtab_sec->os_shdr.sh_offset, obj->obj_filepath, obj->obj_file);
+    ezld_runtime_seek(obj_symtab_sec->os_shdr.sh_offset,
+                      obj->obj_filepath,
+                      obj->obj_file);
 
     ezld_array_alloc(obj_symtab->ost_syms, num_entires);
 
@@ -838,10 +844,10 @@ static void merge_symtabs(ezld_obj_t *obj, ezld_obj_symtab_t *obj_symtab) {
                               obj_sym->osy_name);
         }
 
-        ezld_obj_sec_t *sym_sec =
-            &obj_symtab_sec->os_obj->obj_oss.buf[entry.st_shndx];
-        size_t     glob_shidx = mrg_from_secidx(sym_sec)->ms_ndx;
-        Elf32_Sym *glob_sym   = ezld_array_push(g_self->i_globsymtab);
+        ezld_obj_sec_t *sym_sec    = &obj_symtab_sec->os_obj->obj_oss
+                                          .buf[entry.st_shndx];
+        size_t          glob_shidx = mrg_from_secidx(sym_sec)->ms_ndx;
+        Elf32_Sym      *glob_sym   = ezld_array_push(g_self->i_globsymtab);
 
         glob_sym->st_shndx = glob_shidx;
         glob_sym->st_value = entry.st_value + sym_sec->os_transl;
@@ -872,19 +878,23 @@ static void read_object(ezld_obj_t *obj) {
     ezld_array_init(obj->obj_symtabs);
 
     Elf32_Ehdr ehdr = {0};
-    ezld_runtime_read_exact(
-        &ehdr, sizeof(Elf32_Ehdr), obj->obj_filepath, obj->obj_file);
+    ezld_runtime_read_exact(&ehdr,
+                            sizeof(Elf32_Ehdr),
+                            obj->obj_filepath,
+                            obj->obj_file);
     obj->obj_ehdr = ehdr;
 
     if (ehdr.e_ident[EI_MAG0] != ELFMAG0 || ehdr.e_ident[EI_MAG1] != ELFMAG1 ||
         ehdr.e_ident[EI_MAG2] != ELFMAG2 || ehdr.e_ident[EI_MAG3] != ELFMAG3) {
-        ezld_runtime_exit(
-            EZLD_ECODE_BADFILE, "'%s' is not an ELF file", obj->obj_filepath);
+        ezld_runtime_exit(EZLD_ECODE_BADFILE,
+                          "'%s' is not an ELF file",
+                          obj->obj_filepath);
     }
 
     if (ehdr.e_ident[EI_CLASS] != ELFCLASS32) {
-        ezld_runtime_exit(
-            EZLD_ECODE_BADFILE, "'%s' is not a 32-bit ELF", obj->obj_filepath);
+        ezld_runtime_exit(EZLD_ECODE_BADFILE,
+                          "'%s' is not a 32-bit ELF",
+                          obj->obj_filepath);
     }
 
     if (!g_self->i_out.out_set) {
@@ -1000,8 +1010,11 @@ static void write_segment(ezld_mrg_sec_t *sec,
     for (size_t i = 0; i < sec->ms_oss.len; i++) {
         ezld_obj_sec_t *s = sec->ms_oss.buf[i];
         read_section_contents(s);
-        ezld_runtime_write_exact_at(
-            s->os_data, s->os_shdr.sh_size, off + s->os_transl, filename, file);
+        ezld_runtime_write_exact_at(s->os_data,
+                                    s->os_shdr.sh_size,
+                                    off + s->os_transl,
+                                    filename,
+                                    file);
     }
 }
 
@@ -1025,8 +1038,10 @@ static Elf32_Shdr write_strtab(const char         *sec_name,
     strtab_shdr.sh_offset  = ftell(g_self->i_out.out_file);
     strtab_shdr.sh_size    = 1;
 
-    ezld_runtime_write_exact(
-        &zero, 1, g_self->i_cfg.cfg_outpath, g_self->i_out.out_file);
+    ezld_runtime_write_exact(&zero,
+                             1,
+                             g_self->i_cfg.cfg_outpath,
+                             g_self->i_out.out_file);
     for (size_t i = 0; i < strtab->gst_strs.len; i++) {
         ezld_glob_str_t *str = &strtab->gst_strs.buf[i];
         ezld_runtime_write_exact((void *)(str->gs_data),
@@ -1073,8 +1088,9 @@ static void write_exec(void) {
     }
 
     // Header will be added later
-    ezld_runtime_seek(
-        sizeof(Elf32_Ehdr), g_self->i_cfg.cfg_outpath, g_self->i_out.out_file);
+    ezld_runtime_seek(sizeof(Elf32_Ehdr),
+                      g_self->i_cfg.cfg_outpath,
+                      g_self->i_out.out_file);
 
     ehdr.e_phoff     = sizeof(Elf32_Ehdr);
     ehdr.e_phentsize = sizeof(Elf32_Phdr);
@@ -1135,13 +1151,16 @@ static void write_exec(void) {
                                  sizeof(Elf32_Phdr),
                                  g_self->i_cfg.cfg_outpath,
                                  g_self->i_out.out_file);
-        write_segment(
-            sec, seg_off, g_self->i_cfg.cfg_outpath, g_self->i_out.out_file);
+        write_segment(sec,
+                      seg_off,
+                      g_self->i_cfg.cfg_outpath,
+                      g_self->i_out.out_file);
         seg_off += advance;
     }
 
-    ezld_runtime_seek(
-        seg_off, g_self->i_cfg.cfg_outpath, g_self->i_out.out_file);
+    ezld_runtime_seek(seg_off,
+                      g_self->i_cfg.cfg_outpath,
+                      g_self->i_out.out_file);
 
     Elf32_Shdr strtab_shdr   = write_strtab(".strtab", &g_self->i_globstrtab);
     Elf32_Shdr shstrtab_shdr = write_strtab(".shstrtab", &g_self->i_shstrtab);
@@ -1225,8 +1244,8 @@ static void align_sections(void) {
             ezld_mrg_sec_t *prev_mrg = &g_self->i_mss.buf[i - 1];
 
             if (mrg->ms_vaddr < prev_mrg->ms_vaddr + prev_mrg->ms_memsz) {
-                size_t diff =
-                    prev_mrg->ms_vaddr + prev_mrg->ms_memsz - mrg->ms_vaddr;
+                size_t diff     = prev_mrg->ms_vaddr + prev_mrg->ms_memsz -
+                                  mrg->ms_vaddr;
                 size_t old_virt = mrg->ms_vaddr;
                 mrg->ms_vaddr += diff;
 
@@ -1245,8 +1264,8 @@ static void align_sections(void) {
                                  sec_name,
                                  0);
         } else if (mrg->ms_vaddr % align != 0) {
-            size_t aligned_virt =
-                mrg->ms_vaddr + (align - (mrg->ms_vaddr % align));
+            size_t aligned_virt = mrg->ms_vaddr +
+                                  (align - (mrg->ms_vaddr % align));
             ezld_runtime_message(
                 EZLD_EMSG_WARN,
                 "section '%s' has misaligned virtual address 0x%08x (requires "
@@ -1307,8 +1326,9 @@ static void open_objects(void) {
         FILE       *file     = fopen(obj_path, "rb");
 
         if (file == NULL) {
-            ezld_runtime_exit(
-                EZLD_ECODE_NOFILE, "could not open input file '%s'", obj_path);
+            ezld_runtime_exit(EZLD_ECODE_NOFILE,
+                              "could not open input file '%s'",
+                              obj_path);
         }
 
         ezld_obj_t *obj   = ezld_array_push(g_self->i_objs);
@@ -1386,80 +1406,82 @@ static void relocate(uint8_t  *data,
                                 g_self->i_cfg.cfg_outpath, \
                                 g_self->i_out.out_file)
 
-    ezld_runtime_seek(
-        outfile_off, g_self->i_cfg.cfg_outpath, g_self->i_out.out_file);
+    ezld_runtime_seek(outfile_off,
+                      g_self->i_cfg.cfg_outpath,
+                      g_self->i_out.out_file);
 
     switch (type) {
-    case R_RISCV_BRANCH: {
-        REQUIRE(4);
-        uint32_t inst    = REGION(uint32_t);
-        int32_t  val     = (int32_t)globsym.st_value + addend - virt_addr;
-        uint32_t uval    = (uint32_t)val;
-        uint32_t imm12   = (uval >> 12) & 0x1;
-        uint32_t imm10_5 = (uval >> 5) & 0x3F;
-        uint32_t imm4_1  = (uval >> 1) & 0xF;
-        uint32_t imm11   = (uval >> 11) & 0x1;
-        inst &= 0x01FFF07F;
-        inst |= (imm12 << 31);
-        inst |= (imm10_5 << 25);
-        inst |= (imm4_1 << 8);
-        inst |= (imm11 << 7);
-        WRITE(inst);
-        break;
-    }
+        case R_RISCV_BRANCH: {
+            REQUIRE(4);
+            uint32_t inst    = REGION(uint32_t);
+            int32_t  val     = (int32_t)globsym.st_value + addend - virt_addr;
+            uint32_t uval    = (uint32_t)val;
+            uint32_t imm12   = (uval >> 12) & 0x1;
+            uint32_t imm10_5 = (uval >> 5) & 0x3F;
+            uint32_t imm4_1  = (uval >> 1) & 0xF;
+            uint32_t imm11   = (uval >> 11) & 0x1;
+            inst &= 0x01FFF07F;
+            inst |= (imm12 << 31);
+            inst |= (imm10_5 << 25);
+            inst |= (imm4_1 << 8);
+            inst |= (imm11 << 7);
+            WRITE(inst);
+            break;
+        }
 
-    case R_RISCV_JAL: {
-        REQUIRE(4);
-        uint32_t inst     = REGION(uint32_t);
-        int32_t  val      = (int32_t)globsym.st_value + addend - virt_addr;
-        uint32_t uval     = (uint32_t)val;
-        uint32_t imm20    = (uval >> 20) & 0x1;
-        uint32_t imm10_1  = (uval >> 1) & 0x3FF;
-        uint32_t imm11    = (uval >> 11) & 0x1;
-        uint32_t imm19_12 = (uval >> 12) & 0xFF;
-        inst &= 0x00000FFF;
-        inst |= (imm20 << 31);
-        inst |= (imm10_1 << 21);
-        inst |= (imm11 << 20);
-        inst |= (imm19_12 << 12);
-        WRITE(inst);
-        break;
-    }
+        case R_RISCV_JAL: {
+            REQUIRE(4);
+            uint32_t inst     = REGION(uint32_t);
+            int32_t  val      = (int32_t)globsym.st_value + addend - virt_addr;
+            uint32_t uval     = (uint32_t)val;
+            uint32_t imm20    = (uval >> 20) & 0x1;
+            uint32_t imm10_1  = (uval >> 1) & 0x3FF;
+            uint32_t imm11    = (uval >> 11) & 0x1;
+            uint32_t imm19_12 = (uval >> 12) & 0xFF;
+            inst &= 0x00000FFF;
+            inst |= (imm20 << 31);
+            inst |= (imm10_1 << 21);
+            inst |= (imm11 << 20);
+            inst |= (imm19_12 << 12);
+            WRITE(inst);
+            break;
+        }
 
-    case R_RISCV_HI20: {
-        REQUIRE(4);
-        uint32_t inst = REGION(uint32_t);
-        inst =
-            (inst & KEEP_LO32(12)) | mask32(globsym.st_value & KEEP_HI32(20));
-        WRITE(inst);
-        break;
-    }
+        case R_RISCV_HI20: {
+            REQUIRE(4);
+            uint32_t inst = REGION(uint32_t);
+            inst          = (inst & KEEP_LO32(12)) |
+                            mask32(globsym.st_value & KEEP_HI32(20));
+            WRITE(inst);
+            break;
+        }
 
-    case R_RISCV_LO12_I: {
-        REQUIRE(4);
-        uint32_t inst = REGION(uint32_t);
-        inst          = (inst & KEEP_LO32(20)) |
-               mask32((globsym.st_value & KEEP_LO32(12)) << 20);
-        WRITE(inst);
-        break;
-    }
+        case R_RISCV_LO12_I: {
+            REQUIRE(4);
+            uint32_t inst = REGION(uint32_t);
+            inst          = (inst & KEEP_LO32(20)) |
+                            mask32((globsym.st_value & KEEP_LO32(12)) << 20);
+            WRITE(inst);
+            break;
+        }
 
-    case R_RISCV_LO12_S: {
-        REQUIRE(4);
-        uint32_t inst    = REGION(uint32_t);
-        uint32_t uval    = globsym.st_value + addend;
-        uint32_t imm11_5 = (uval >> 5) & 0x7F;
-        uint32_t imm4_0  = uval & 0x1F;
-        inst &= 0x01FFF07F;
-        inst |= (imm11_5 << 25);
-        inst |= (imm4_0 << 7);
-        WRITE(inst);
-        break;
-    }
+        case R_RISCV_LO12_S: {
+            REQUIRE(4);
+            uint32_t inst    = REGION(uint32_t);
+            uint32_t uval    = globsym.st_value + addend;
+            uint32_t imm11_5 = (uval >> 5) & 0x7F;
+            uint32_t imm4_0  = uval & 0x1F;
+            inst &= 0x01FFF07F;
+            inst |= (imm11_5 << 25);
+            inst |= (imm4_0 << 7);
+            WRITE(inst);
+            break;
+        }
 
-    default:
-        ezld_runtime_message(
-            EZLD_EMSG_WARN, "unsupported relocation type %u, ignoring", type);
+        default:
+            ezld_runtime_message(EZLD_EMSG_WARN,
+                                 "unsupported relocation type %u, ignoring",
+                                 type);
     }
 #undef REQUIRE
 #undef KEEP_HI32
@@ -1540,10 +1562,10 @@ static void rela_section(ezld_obj_sec_t *objsec) {
         // section where the original object section starts + offset into the
         // object section where the relocation needs to be applied
         ezld_mrg_sec_t *mrg_target = mrg_from_secidx(target);
-        size_t          off =
-            mrg_target->ms_fileoff + target->os_transl + entry.r_offset;
-        size_t sym_idx = ELF32_R_SYM(entry.r_info);
-        size_t type    = ELF32_R_TYPE(entry.r_info);
+        size_t          off     = mrg_target->ms_fileoff + target->os_transl +
+                                  entry.r_offset;
+        size_t          sym_idx = ELF32_R_SYM(entry.r_info);
+        size_t          type    = ELF32_R_TYPE(entry.r_info);
 
         if (symtab_idx >= symtab->ost_syms.len) {
             ezld_runtime_exit(EZLD_ECODE_BADSYM,

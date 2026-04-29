@@ -35,10 +35,12 @@ int main(int argc, const char *argv[]) {
     cfg.cfg_segalign = 0x1000;
     ezld_array_init(cfg.cfg_objpaths);
     ezld_array_init(cfg.cfg_sections);
-    *ezld_array_push(cfg.cfg_sections) =
-        (ezld_sec_cfg_t){.sc_name = ".text", .sc_vaddr = 0x00400000};
-    *ezld_array_push(cfg.cfg_sections) =
-        (ezld_sec_cfg_t){.sc_name = ".data", .sc_vaddr = 0x10000000};
+    *ezld_array_push(cfg.cfg_sections) = (ezld_sec_cfg_t){
+        .sc_name  = ".text",
+        .sc_vaddr = 0x00400000};
+    *ezld_array_push(cfg.cfg_sections) = (ezld_sec_cfg_t){
+        .sc_name  = ".data",
+        .sc_vaddr = 0x10000000};
 
     cli_exec_t command = ezld_link;
     cli_parse(argc, argv, &cfg, &command);
