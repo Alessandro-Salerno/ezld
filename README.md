@@ -1,27 +1,24 @@
 > [!IMPORTANT]
 > The official ezld repository is https://github.com/Alessandro-Salerno/ezld. If you're seeing this on any other website (like github-zh.com), switch to the official repository! I have **never** uploaded this project to other source hosting services.
 
-# ⚙️ ezld — Tiny Static ELF Linker
+# ezld
 
 [![Contributors][contributors-shield]][contributors-url]
 [![Forks][forks-shield]][forks-url]
 [![Stargazers][stars-shield]][stars-url]
 [![Issues][issues-shield]][issues-url]
 [![MIT License][license-shield]][license-url]
-![Lines of Code](https://tokei.rs/b1/github/Alessandro-Salerno/ezld)
 
-> A tiny, simple, and portable static [Linker](https://en.wikipedia.org/wiki/Linker_(computing)) for the [ELF](https://en.wikipedia.org/wiki/Executable_and_Linkable_Format) format.
+Tiny, simple, and portable static [Linker](https://en.wikipedia.org/wiki/Linker_(computing))
+for the [ELF](https://en.wikipedia.org/wiki/Executable_and_Linkable_Format) format.
 
----
 
 ## 🛠 Features
 - Command-line interface for direct usage  
-- No OS-specific libc dependency (portable across platforms)  
+- No OS-specific dependency (portable across platforms)  
 - Supports section alignment, entry point overrides, and more  
 - Usable as a library or standalone binary  
-- Designed with simplicity and clarity in mind
 
----
 
 ## 🚀 Usage
 
@@ -42,8 +39,6 @@ OPTIONS:
     -o, --output       Set output file path (default: 'a.out')
 ```
 
----
-
 ## ⚙️ Building from Source
 
 Use the included `Makefile` to build:
@@ -54,8 +49,6 @@ make release  # Build optimized release version
 make library  # Build as a static library
 ```
 
----
-
 ## 📦 Installing via tarman
 
 Install with [`tarman`](https://github.com/Alessandro-Salerno/tarman) from the [tarman user repository](https://github.com/Alessandro-Salerno/tarman-user-repository):
@@ -64,27 +57,22 @@ Install with [`tarman`](https://github.com/Alessandro-Salerno/tarman) from the [
 tarman install -r ezld
 ```
 
----
-
 ## 🌍 Portability
 
-> 💡 **ezld is platform-agnostic.**
-
-Though it links **ELF binaries**, it's designed to run on any host, including:
+Though it links ELF binaries, it's designed to run on any host, including:
 - 🪟 Windows
 - 🐧 Linux
 - 🍎 macOS
 - 🌈 [SalernOS](https://github.com/Alessandro-Salerno/SalernOS-Kernel)
 
-ezld avoids non-standard libc functions, improving portability and making it suitable for low-level projects, OS userspace testing, or educational purposes.
+ezld avoids non-standard libc functions, improving portability and making it
+suitable for low-level projects, OS userspace testing, or educational purposes.
 
----
+## 💻 Project Context
 
-## 👨‍💻 Project Context
-
-ezld was created as part of the [`ARES`](https://github.com/ldlaur/ares) project. It’s meant to be a **learning tool** and **experimentation ground** for understanding the inner workings of static linking and ELF formats.
-
----
+ezld was created as part of the [`ARES`](https://github.com/ldlaur/ares) project.
+It’s meant to be a **learning tool** and **experimentation ground** for understanding
+the inner workings of static linking and ELF formats.
 
 ## ⚖️ License
 
@@ -93,8 +81,6 @@ This project includes code from:
 - [tarman](https://github.com/Alessandro-Salerno/tarman)
 
 ezld is licensed under the [MIT License](LICENSE). Third-party code may have distinct copyright.
-
----
 
 [contributors-shield]: https://img.shields.io/github/contributors/Alessandro-Salerno/ezld.svg?style=flat-square  
 [contributors-url]: https://github.com/Alessandro-Salerno/ezld/graphs/contributors  
