@@ -1,3 +1,6 @@
+> [!WARNING]
+> This project was archived on June 23, 2026 due to high maintenance overhead and limited applicability. Development may resume at a later date depending on the needs of the [ARES Project](https://github.com/ldlaur/ares) or other applicable targets. 
+
 > [!IMPORTANT]
 > The official ezld repository is https://github.com/Alessandro-Salerno/ezld. If you're seeing this on any other website (like github-zh.com), switch to the official repository! I have **never** uploaded this project to other source hosting services.
 
